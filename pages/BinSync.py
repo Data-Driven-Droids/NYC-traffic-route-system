@@ -1,273 +1,169 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import altair as alt
-# Re-adding Config import as requested
-from config.settings import Config 
+from datetime import datetime
+from utils import calculate_monthly_waste_metrics, get_bin_locations_data
 
-# --- Configuration and Page Setup ---
+# ======================================================================
+# DATA LOADING FUNCTIONS
+# ======================================================================
+
+@st.cache_data
+def load_monthly_data():
+    df = calculate_monthly_waste_metrics()  # <-- your backend/snowflake fetch
+    if df is not None and not df.empty:
+        # Convert 'MONTH' safely from "YYYY / MM" → datetime
+        df["MONTH"] = (
+            df["MONTH"]
+            .astype(str)
+            .str.strip()
+            .str.replace(" / ", "-", regex=False)
+            .apply(lambda x: pd.to_datetime(x + "-01", errors="coerce"))
+        )
+    return df
+
+
+@st.cache_data
+def load_bin_locations():
+    df = get_bin_locations_data()  # <-- your backend/snowflake fetch
+    return df
+
+
+# ======================================================================
+# LOAD DATA
+# ======================================================================
+monthly_df = load_monthly_data()
+bin_locations_df = load_bin_locations()
+
+# Handle missing monthly data
+if monthly_df is not None and not monthly_df.empty:
+    latest = monthly_df.iloc[-1]
+    recent_12 = monthly_df.tail(12)
+else:
+    latest = pd.Series({
+        "MONTH": datetime.now(),
+        "TOTAL_WASTE_TONS_MONTHLY": 0,
+        "TOTAL_RECYCLED_TONS_MONTHLY": 0,
+        "DIVERSION_RATE_AVG_MONTHLY": 0.0
+    })
+    recent_12 = pd.DataFrame()
+
+
+# ======================================================================
+# PAGE SETUP
+# ======================================================================
 st.set_page_config(
     page_title="SAP Smart City - Waste Management Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for a dark theme and SAP-like design elements
+# --- Custom CSS for dark SAP-style theme ---
 st.markdown("""
 <style>
-    /* Main Background Color (Dark/Navy) */
-    .main {
-        background-color: #1E2129; 
-    }
-    
-    /* Header/Title Font Color */
-    .st-emotion-cache-18ni2gq { /* Target the Streamlit main content div */
-        color: #FFFFFF;
-    }
-    
-    /* Metric boxes styling */
+    .main { background-color: #1E2129; }
     div[data-testid="stMetric"] > div[data-testid="stMetricValue"] {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #FFFFFF; /* White text for main values */
+        font-size: 2.5rem; font-weight: bold; color: #FFFFFF;
     }
     div[data-testid="stMetric"] > div[data-testid="stMetricLabel"] {
-        font-size: 0.9rem;
-        color: #A0A4AE; /* Lighter text for labels */
+        font-size: 0.9rem; color: #A0A4AE;
     }
-    
-    /* Separator lines */
-    hr {
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-        border: 0;
-        border-top: 1px solid #3A3F4B;
-    }
-    
-    /* Custom Card/Box Styling (for general content areas) */
-    .st-emotion-cache-vk3ypz { /* Target st.container background */
-        background-color: #282C34;
-        border-radius: 8px;
-        padding: 10px;
-    }
-
-    /* Sub-header for the main title (mimicking the SAP header) */
-    .dashboard-header {
-        font-size: 2rem;
-        font-weight: 300;
-        color: #A0A4AE;
-        margin-top: 0;
-        margin-bottom: 10px;
-    }
-    
-    /* Map Container Style (to match the dark theme and size) */
-    .map-container {
-        border-radius: 8px; /* Rounded corners for the container */
-        overflow: hidden; 
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); /* Dark shadow */
-        height: 500px; /* Set height to match the original image */
-        position: relative; /* Needed for absolute positioning of legend */
-    }
-    .map-container iframe {
-        height: 100%; /* Make iframe fill the container */
-    }
-
+    hr { border: 0; border-top: 1px solid #3A3F4B; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Main Title ---
-st.markdown('<span style="font-weight: 500; color: #FFFFFF;">Smart City - Waste Management</span>', unsafe_allow_html=True)
+# ======================================================================
+# DASHBOARD TITLE
+# ======================================================================
+st.markdown('<h2 style="color:#FFFFFF;">Smart City - Waste Management</h2>', unsafe_allow_html=True)
 
-# --- Dummy Data Generation for Charts ---
-def generate_timeseries_data(points=10):
-    # Ensure data starts with index 9 for waste sequestered chart X-axis
-    if points == 9:
-        # Generate labels 9, 10, 11... 17
-        dates = [f'{i}' for i in range(9, 9 + points)]
-    else:
-        # Generate labels 1, 2, 3... 10
-        dates = [f'{i}' for i in range(1, points + 1)]
+# Safely show date if valid
+if pd.notnull(latest["MONTH"]) and isinstance(latest["MONTH"], pd.Timestamp):
+    formatted_date = latest["MONTH"].strftime("%b %Y")
+else:
+    formatted_date = "Unknown"
 
-    data = np.random.randint(500, 1500, size=points) + np.sin(np.arange(points) / 2) * 200
-    df = pd.DataFrame({'Time': dates, 'Value': data})
-    return df
+st.markdown(
+    f"<p style='color:#A0A4AE;'>Showing data till <b>{formatted_date}</b></p>",
+    unsafe_allow_html=True
+)
 
-# Data matching the image charts
-waste_seq_df = generate_timeseries_data(points=9)
-reselling_df = generate_timeseries_data(points=10)
-
-
-# --- ROW 1: Key Metrics (Total Waste Collected, Uncollected, Avg Fill Level) ---
-col1, col2, col3, col4, col5 = st.columns([1.5, 1.5, 2.5, 1.5, 3])
+# ======================================================================
+# ROW 1: METRICS
+# ======================================================================
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric(
-        label="Total Waste Collected",
-        value="617.0",
-        delta="Daily collection by the hour"
-    )
-    st.markdown('<span style="color: #A0A4AE; font-size: 0.9rem; margin-top: -15px; display: block;">In Kilo Tonnes</span>', unsafe_allow_html=True)
+    st.metric("Total Waste Collected", f"{latest['TOTAL_WASTE_TONS_MONTHLY']:,.2f}", "Tons")
 
 with col2:
-    st.metric(
-        label="Uncollected Waste",
-        value="584.0",
-        delta="Waste generated by the hour"
-    )
-    st.markdown('<span style="color: #A0A4AE; font-size: 0.9rem; margin-top: -15px; display: block;">In Kilo Tonnes</span>', unsafe_allow_html=True)
+    st.metric("Total Recycled Waste", f"{latest['TOTAL_RECYCLED_TONS_MONTHLY']:,.2f}", "Tons")
 
 with col3:
-    # Mimicking the Avg Fill Level progress bar
-    st.markdown('Average Fill Level', unsafe_allow_html=True)
-    st.markdown('<h2 style="color: #FFFFFF; margin-top: 0; margin-bottom: 5px;">50%</h2>', unsafe_allow_html=True)
-    
-    # Custom progress bar (Green and Grey)
-    st.markdown("""
-    <div style="background-color: #3A3F4B; border-radius: 4px; height: 10px; width: 100%;">
-        <div style="background-color: #2ECC71; height: 100%; width: 50%; border-radius: 4px;"></div>
-    </div>
-    <div style="font-size: 0.8rem; color: #A0A4AE; margin-top: 5px; margin-bottom: 5px;">Actual Volume | Total Capacity</div>
-    """, unsafe_allow_html=True)
+    st.metric("Average Diversion Rate", f"{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%", "Recycled / Total")
 
-with col4:
-    # Mimicking the Routes Overview progress bar
-    st.markdown('Routes Overview', unsafe_allow_html=True)
-    st.markdown('<h2 style="color: #FFFFFF; margin-top: 0; margin-bottom: 5px;">43%</h2>', unsafe_allow_html=True)
-    
-    # Custom progress bar (Dark Green and Grey)
-    st.markdown("""
-    <div style="background-color: #3A3F4B; border-radius: 4px; height: 10px; width: 100%;">
-        <div style="background-color: #1E8449; height: 100%; width: 43%; border-radius: 4px;"></div>
-    </div>
-    <div style="font-size: 0.8rem; color: #A0A4AE; margin-top: 5px; margin-bottom: 5px;">Routes in Use | Total Routes</div>
-    """, unsafe_allow_html=True)
-
-with col5:
-    # Placeholder for the small line chart icon/trend
-    st.markdown('<div style="height: 50px;"></div>', unsafe_allow_html=True)
-
-# --- Horizontal Separator ---
 st.markdown("---")
 
-# --- ROW 2: Map and Side Metrics ---
-col_map, col_side_metrics = st.columns([7, 3])
+# ======================================================================
+# ROW 2: BIN LOCATIONS MAP
+# ======================================================================
+if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"}.issubset(bin_locations_df.columns):
+    st.markdown('<h3 style="color:#FFFFFF;">Real-Time Bin Locations</h3>', unsafe_allow_html=True)
 
-with col_map:
-    # Restoring the usage of Config.GOOGLE_MAPS_API_KEY as requested
-    map_api_key = Config.GOOGLE_MAPS_API_KEY if 'Config' in locals() or 'Config' in globals() else 'YOUR_API_KEY_HERE'
-    map_src = f"https://www.google.com/maps/embed/v1/place?key={map_api_key}&q=New+York,NY&maptype=roadmap&zoom=11"
-    
-    st.markdown(
-        f"""
-        <div class="map-container">
-            <iframe
-                width="100%"
-                height="100%"
-                style="border:0"
-                loading="lazy"
-                allowfullscreen
-                referrerpolicy="no-referrer-when-downgrade"
-                src="{map_src}">
-            </iframe>
-            
-            <div style="position: absolute; bottom: 30px; left: 30px; background-color: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; color: white; font-size: 0.8rem; z-index: 100;">
-                <p style="margin: 0 0 5px 0; font-weight: bold; color: #FFFFFF;">LEGENDS</p>
-                <div style="display: flex; align-items: center; margin-bottom: 3px;">
-                    <div style="width: 10px; height: 10px; border-radius: 50%; background-color: #2ECC71; margin-right: 5px;"></div>
-                    <span>> N% of Bins</span>
-                </div>
-                <div style="display: flex; align-items: center;">
-                    <div style="width: 10px; height: 10px; background-color: #3498DB; margin-right: 5px;"></div>
-                    <span>Bin_Location</span>
-                </div>
-            </div>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+    st.map(bin_locations_df, latitude='lat', longitude='lon', zoom=11, use_container_width=True)
 
+    with st.expander("Show Raw Bin Location Data"):
+        st.dataframe(bin_locations_df[["Name", "lat", "lon"]])
 
-with col_side_metrics:
-    # Carbon Footprint
-    st.metric(
-        label="Carbon Footprint",
-        value="1,236.0"
-    )
-    st.markdown('<span style="color: #A0A4AE; font-size: 0.9rem; margin-top: -15px; display: block;">In MgCO2</span>', unsafe_allow_html=True)
     st.markdown("---")
-    
-    # Segregation Rate
-    st.metric(
-        label="Segregation Rate",
-        value="33%"
+else:
+    st.warning("⚠️ Could not load or display bin location data from Snowflake. Check connection parameters and view columns.")
+
+# ======================================================================
+# ROW 3: TREND CHART
+# ======================================================================
+if not recent_12.empty:
+    st.markdown('<h3 style="color:#FFFFFF;">12-Month Trend: Waste vs Recycled</h3>', unsafe_allow_html=True)
+
+    trend_df = recent_12.melt(
+        id_vars="MONTH",
+        value_vars=["TOTAL_WASTE_TONS_MONTHLY", "TOTAL_RECYCLED_TONS_MONTHLY"],
+        var_name="Type",
+        value_name="Tons"
     )
-    st.markdown('<span style="color: #A0A4AE; font-size: 0.9rem; margin-top: -15px; display: block;">Aggregated Waste | Total Waste</span>', unsafe_allow_html=True)
-    st.markdown("---")
-    
-    # Electricity Generated
-    st.metric(
-        label="Electricity Generated",
-        value="779.4"
+
+    trend_df["Type"] = trend_df["Type"].replace({
+        "TOTAL_WASTE_TONS_MONTHLY": "Total Waste",
+        "TOTAL_RECYCLED_TONS_MONTHLY": "Recycled Waste"
+    })
+
+    chart = (
+        alt.Chart(trend_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("MONTH:T", title="Month", axis=alt.Axis(labelColor="#A0A4AE")),
+            y=alt.Y("Tons:Q", title="Tons of Waste", axis=alt.Axis(labelColor="#A0A4AE")),
+            color=alt.Color(
+                "Type:N",
+                scale=alt.Scale(domain=["Total Waste", "Recycled Waste"], range=["#2ECC71", "#3498DB"]),
+            ),
+            tooltip=["MONTH:T", "Type:N", "Tons:Q"]
+        )
+        .properties(height=350, background="#282C34")
     )
-    st.markdown('<span style="color: #A0A4AE; font-size: 0.9rem; margin-top: -15px; display: block;">In kWh</span>', unsafe_allow_html=True)
+
+    st.altair_chart(chart, use_container_width=True)
     st.markdown("---")
 
-
-# --- ROW 3: Ticket Log, Reselling Revenue, Waste Sequestered ---
-col_log, col_reselling, col_sequestered = st.columns([3, 4, 3])
-
-# --- Ticket Log ---
-with col_log:
-    st.markdown('<h3 style="color: #FFFFFF; font-weight: normal;">Ticket Log</h3>', unsafe_allow_html=True)
-    
-    # Creating a simple table to mimic the ticket log look
-    ticket_data = {
-        '#': [108, 117, 124, 127, 128, 133, 135],
-        'Details': ["Bin sensor not reporting data", "Add new bin ID 129435 at 100% fill level", "New bin sensor system", "Bin ID 129275 @ 100% fill level", "Bin ID 123375 @ 100% fill level", "Bin temperature sensor reporting unsafe...", "Unable to log in to Route Management..."],
-        'Type': ["System", "Compl..", "Request", "Compl..", "Compl..", "System", "User"],
-        'Status': ["Under review", "Resolved", "Resolved", "Resolved", "In process", "Resolved", "Under review"],
-        'Date': ["10/31/2019", "09/24/2019", "09/26/2019", "10/19/2019", "10/18/2019", "10/29/2019", "11/10/2019"]
-    }
-    log_df = pd.DataFrame(ticket_data)
-    
-    # Displaying the log rows
-    st.markdown('<div style="font-size: 0.85rem; background-color: #282C34; padding: 10px; border-radius: 8px;">', unsafe_allow_html=True)
-    for index, row in log_df.iterrows():
-        status_color = "#2ECC71" if row['Status'] == 'Resolved' else ("#F1C40F" if row['Status'] == 'Under review' else "#3498DB")
-        
-        st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; padding: 3px 0;">
-            <div style="flex-basis: 5%; color: #A0A4AE;">{row['#']}</div>
-            <div style="flex-basis: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #FFFFFF;">{row['Details']}</div>
-            <div style="flex-basis: 15%; color: #A0A4AE;">{row['Type']}</div>
-            <div style="flex-basis: 18%; color: {status_color};">{row['Status']}</div>
-            <div style="flex-basis: 17%; color: #A0A4AE; text-align: right;">{row['Date']}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# --- Reselling Revenue ---
-with col_reselling:
-    st.markdown('<h3 style="color: #FFFFFF; font-weight: normal;">Reselling Revenue (in S$)</h3>', unsafe_allow_html=True)
-    
-    # Bar Chart for Reselling Revenue
-    chart_reselling = alt.Chart(reselling_df).mark_bar(color='#3498DB').encode(
-        x=alt.X('Time', title=None, axis=None),
-        y=alt.Y('Value', title=None, axis=None),
-        tooltip=['Time', 'Value']
-    ).properties(height=200, background='#282C34')
-    
-    st.altair_chart(chart_reselling, use_container_width=True)
-
-# --- Waste Sequestered ---
-with col_sequestered:
-    st.markdown('<h3 style="color: #FFFFFF; font-weight: normal;">Waste sequestered (by the hour)</h3>', unsafe_allow_html=True)
-    
-    # Line Chart for Waste Sequestered
-    chart_sequestered = alt.Chart(waste_seq_df).mark_line(color='#2ECC71').encode(
-        x=alt.X('Time', title=None, axis=alt.Axis(format='d', labelColor='#A0A4AE', grid=False, domain=False)),
-        y=alt.Y('Value', title=None, axis=None),
-        tooltip=['Time', 'Value']
-    ).properties(height=200, background='#282C34')
-    
-    st.altair_chart(chart_sequestered, use_container_width=True)
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(
+            f"<p style='color:#A0A4AE;'>Waste diversion improved to <b>{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%</b> in <b>{formatted_date}</b>.</p>",
+            unsafe_allow_html=True
+        )
+    with col_b:
+        avg_12 = recent_12["DIVERSION_RATE_AVG_MONTHLY"].mean()
+        st.markdown(
+            f"<p style='color:#A0A4AE;'>Average diversion rate for the last 12 months: <b>{avg_12:.2f}%</b></p>",
+            unsafe_allow_html=True
+        )

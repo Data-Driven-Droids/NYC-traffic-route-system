@@ -9,6 +9,8 @@ from datetime import datetime
 from config.settings import Config
 import json as json
 
+load_dotenv() 
+
 # Updated function to accept latitude and longitude
 def get_air_quality_data_nyc(latitude: float = 40.7128, longitude: float = -74.0060):
     """
@@ -237,12 +239,8 @@ def get_news_headlines(region: str) -> str:
     Returns:
         A formatted string of headlines separated by a separator, or an error message.
     """
-    try:
-        # Get API key from config
-        api_key = Config.NEWS_API_KEY
-    except (NameError, AttributeError):
-        # In a real app, you'd raise an exception or handle this properly.
-        return "News API key not configured. Cannot fetch headlines."
+    # Get API key from config
+    api_key = os.getenv('NEWS_API_KEY')
 
     # Construct the query to be broad for NYC news, and specific to the region
     search_query = f"New York City AND {region}"
@@ -268,8 +266,7 @@ def get_news_headlines(region: str) -> str:
         print(f"Error fetching news data: {e}")
         return f"Error fetching news for {region}: API request failed."
     
-    
-load_dotenv() 
+
 
 def _create_snowflake_connection(
     conn_params: Optional[Dict[str, str]] = None,
@@ -293,7 +290,6 @@ def _create_snowflake_connection(
         account = account or os.environ.get("SNOWFLAKE_ACCOUNT")
         warehouse = warehouse or os.environ.get("SNOWFLAKE_WAREHOUSE")
         database = database or os.environ.get("SNOWFLAKE_DATABASE")
-        schema = schema or os.environ.get("SNOWFLAKE_SCHEMA")
 
         conn_params = {
             'user': user,
@@ -301,7 +297,6 @@ def _create_snowflake_connection(
             'account': account,
             'warehouse': warehouse,
             'database': database,
-            'schema': schema
         }
         
     # Filter out None values for the connection call (important)
@@ -392,3 +387,168 @@ def fetch_data_from_snowflake(
         if conn:
             conn.close()
             print("Snowflake connection closed.")
+
+BINSYNC_VIEWS: Dict[str, str] = {
+    "WASTE_TONNAGE": "DEV_PREMIER_LEAGUE.BIN_SYNC_SERVICE.VW_MONTHLY_WASTE_TONNAGE_BY_BOROUGH",
+    "NON_OPERATIONAL_BINS": "DEV_PREMIER_LEAGUE.BIN_SYNC_SERVICE.VW_UNIQUE_NON_OPERATIONAL_BINS",
+    "RECYCLING_DIVERSION_RATE": "DEV_PREMIER_LEAGUE.BIN_SYNC_SERVICE.VW_MONTHLY_RECYCLING_DIVERSION_RATE",
+    "BIN_LOCATIONS": "DEV_PREMIER_LEAGUE.BIN_SYNC_SERVICE.VW_COMBINED_BIN_LOCATIONS"
+}
+
+def get_binsync_data_by_view(
+    view_key: str,
+    conn_params: Optional[Dict[str, str]] = None,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    account: Optional[str] = None,
+    warehouse: Optional[str] = None,
+    database: Optional[str] = None,
+    schema: Optional[str] = None
+) -> Optional[pd.DataFrame]:
+    """
+    Fetches data from a specified BinSync view in Snowflake.
+    (This is the original function, unmodified, as its role is fetching raw data.)
+    """
+    view_key = view_key.upper()
+    view_name = BINSYNC_VIEWS.get(view_key)
+    
+    if view_name is None:
+        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(BINSYNC_VIEWS.keys())}")
+        return None
+    
+    query = f"SELECT * FROM {view_name};"
+    
+    print(f"\n=======================================================")
+    print(f"Attempting to fetch data for view: {view_key}")
+    print(f"=======================================================")
+
+    df = fetch_data_from_snowflake(
+        query=query,
+        conn_params=conn_params,
+        user=user,
+        password=password,
+        account=account,
+        warehouse=warehouse,
+        database=database,
+        schema=schema
+    )
+    
+    return df
+
+
+def calculate_monthly_waste_metrics(connection_params: Optional[Dict] = None) -> Optional[pd.DataFrame]:
+    """
+    Fetches the raw recycling diversion data and aggregates it to provide
+    the total waste, total recycled waste, and the true overall diversion 
+    rate on a monthly basis across all boroughs.
+
+    Args:
+        connection_params (Optional[Dict]): Dictionary of Snowflake connection details.
+
+    Returns:
+        Optional[pd.DataFrame]: A DataFrame with the aggregated monthly metrics.
+    """
+    
+    # 1. Fetch the raw monthly/borough data
+    df = get_binsync_data_by_view(
+        view_key='RECYCLING_DIVERSION_RATE',
+        conn_params=connection_params
+    )
+    
+    if df is None:
+        print("Aggregation failed: Could not retrieve data for 'RECYCLING_DIVERSION_RATE'.")
+        return None
+    
+    # 2. Perform the aggregation by 'MONTH'
+    # We sum the tons to get the total amounts across all boroughs for the month.
+    # The monthly average DIVERSION RATE is calculated from the *total* tons, 
+    # not by averaging the existing DIVERSION_RATE_PERCENTAGE column (which 
+    # would incorrectly weight the smaller boroughs).
+    
+    monthly_summary = df.groupby('MONTH').agg(
+        # Aggregate 1: Total waste collected monthly
+        TOTAL_WASTE_TONS_MONTHLY=('TOTAL_WASTE_TONS', 'sum'),
+        
+        # Aggregate 2: Total recycled waste monthly
+        TOTAL_RECYCLED_TONS_MONTHLY=('TOTAL_RECYCLED_TONS', 'sum')
+    ).reset_index()
+
+    # Aggregate 3: Calculate the TRUE overall diversion rate for the month
+    # Formula: (Total Recycled TONS / Total Waste TONS) * 100
+    monthly_summary['DIVERSION_RATE_AVG_MONTHLY'] = (
+        monthly_summary['TOTAL_RECYCLED_TONS_MONTHLY'] / 
+        monthly_summary['TOTAL_WASTE_TONS_MONTHLY']
+    ) * 100
+    
+    # 3. Round the aggregated metrics to 2 decimal places
+    columns_to_round = [
+        'TOTAL_WASTE_TONS_MONTHLY', 
+        'TOTAL_RECYCLED_TONS_MONTHLY', 
+        'DIVERSION_RATE_AVG_MONTHLY'
+    ]
+    monthly_summary[columns_to_round] = monthly_summary[columns_to_round].round(2)
+    
+    print("\n✅ SUCCESS: Calculated aggregated monthly metrics.")
+    
+    return monthly_summary
+
+def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional[pd.DataFrame]:
+    """
+    Fetches and cleans all bin locations (latitude, longitude, name)
+    from the VW_COMBINED_BIN_LOCATIONS view.
+
+    Args:
+        connection_params (Optional[Dict]): Snowflake connection details.
+
+    Returns:
+        Optional[pd.DataFrame]: Clean DataFrame with 'lat', 'lon', and 'Name' columns.
+    """
+    # 1. Fetch the raw bin locations data
+    df = get_binsync_data_by_view(
+        view_key='BIN_LOCATIONS',
+        conn_params=connection_params
+    )
+
+    if df is None or df.empty:
+        print("⚠️ Data retrieval failed or empty for 'BIN_LOCATIONS'.")
+        return None
+
+    # 2. Normalize column names (make uppercase for consistency)
+    df.columns = [col.upper().strip() for col in df.columns]
+
+    # 3. Rename to Streamlit-compatible names
+    rename_map = {
+        'LATITUDE': 'lat',
+        'LONGITUDE': 'lon',
+        'NAME': 'Name',
+        'BIN_TYPE': 'Type'
+    }
+    df = df.rename(columns=rename_map)
+
+    # 4. Create placeholders if missing
+    if 'lat' not in df.columns:
+        df['lat'] = None
+    if 'lon' not in df.columns:
+        df['lon'] = None
+    if 'Name' not in df.columns:
+        df['Name'] = 'Bin Location'
+
+    # 5. Remove invalid or garbage coordinates
+    # Drop rows where lat/lon are missing, null, or not numbers
+    df = df[pd.to_numeric(df['lat'], errors='coerce').notna()]
+    df = df[pd.to_numeric(df['lon'], errors='coerce').notna()]
+    df['lat'] = df['lat'].astype(float)
+    df['lon'] = df['lon'].astype(float)
+
+    # Filter out out-of-range coordinates (not on Earth)
+    df = df[(df['lat'].between(-90, 90)) & (df['lon'].between(-180, 180))]
+
+    # 6. Drop duplicates, reset index
+    df = df.drop_duplicates(subset=['lat', 'lon', 'Name']).reset_index(drop=True)
+
+    if df.empty:
+        print("⚠️ All bin location rows were invalid or filtered out.")
+        return None
+
+    print(f"✅ SUCCESS: Fetched and cleaned {len(df)} bin locations.")
+    return df[['lat', 'lon', 'Name']]

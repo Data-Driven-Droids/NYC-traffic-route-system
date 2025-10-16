@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,6 +22,34 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ====================================================================================================
+# --- ABOUT NEW YORK CITY SECTION (Approx. 500 Words) ---
+# ====================================================================================================
+
+st.title("🗽 New York City: The Crossroads of the World")
+
+st.markdown("""
+New York City, affectionately known as "The Big Apple," is the most populous and influential metropolis in the United States. Situated at the mouth of the Hudson River on one of the world's largest natural harbors, NYC is a **global center for finance, media, art, fashion, technology, and international diplomacy**. It is often described as the cultural capital of the world, with a dynamism fueled by its incredible diversity.
+
+### The Five Boroughs
+The city is geographically composed of five distinct boroughs, each of which is a county of New York State, consolidated into a single entity in 1898:
+* **Manhattan** (New York County): The commercial, financial, and cultural heart, home to Wall Street, Times Square, Central Park, and the iconic skyscraper skyline.
+* **Brooklyn** (Kings County): The most populous borough, celebrated for its artistic flair, historic brownstones, and vibrant neighborhood diversity, from Williamsburg to Coney Island.
+* **Queens** (Queens County): The most ethnically diverse urban area in the world, hosting both JFK and LaGuardia airports and major sports venues like the USTA Billie Jean King National Tennis Center.
+* **The Bronx** (Bronx County): The birthplace of hip-hop and salsa music, featuring Yankee Stadium and expansive green spaces like the Bronx Zoo and Pelham Bay Park.
+* **Staten Island** (Richmond County): Offers a quieter, more suburban environment, connected to Manhattan by the famous free Staten Island Ferry, which provides stunning views of the Statue of Liberty.
+
+### A Beacon of Global Influence
+New York's position as a global city is undisputed. It hosts the headquarters of the **United Nations**, solidifying its role in world affairs. Its two largest stock exchanges, the **New York Stock Exchange (NYSE)** and **NASDAQ**, anchor the world's financial markets. Furthermore, its influence in the arts—from the Broadway Theater District to world-class institutions like the Metropolitan Museum of Art—shapes global trends in entertainment and culture.
+
+The city’s reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet, with hundreds of languages spoken. This rich tapestry of cultures makes every neighborhood a unique experience, from the concentrated Chinese populations in Flushing and Manhattan's Chinatown to the historic Italian-American communities.
+
+Despite its constant rush and notorious traffic, New York offers extensive green retreats, most famously the 843 acres of **Central Park**. The city’s robust 24/7 public transit system, the New York City Subway, allows millions of residents and visitors to navigate this dense urban environment.
+
+In essence, New York City is a relentless, ever-evolving megacity—a powerful symbol of ambition, resilience, and the enduring promise of a place where people from every corner of the globe can contribute to a collective, unforgettable energy.
+""")
+
+st.markdown("---") 
 
 # --- Region Selection Dropdown ---
 selected_region = st.selectbox(
@@ -135,8 +161,7 @@ div[data-testid="stForm"] > div:first-child > div:first-child .stSelectbox {
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/252/252025.png", width=64)
-st.sidebar.title("New York City Dashboard")
+st.sidebar.title("New York City 360 Dashboard")
 
 # --- Main Page Title ---
 st.title(f"Current Weather & Air Quality in {selected_region}") 
@@ -179,7 +204,7 @@ with c4:
         <img src="{aqi_icon}" class="metric-icon">
         <div class="aqi-detail">
              AQI: {current_aqi_value} 
-            <br/>Pollutant: {dominant_pollutant}
+             <br/>Pollutant: {dominant_pollutant}
         </div>
         <br><b>PM2.5: {pm25_value} / PM10: {pm10_value}</b>
         <div style="font-size:1.1em;">Air Quality ({current_aqi_category})</div>
