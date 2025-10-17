@@ -10,11 +10,11 @@ class NYTrafficAPI:
         self.api_key = api_key
 
     @st.cache_data(ttl=300)
-    def _cached_congestion_data(_self, api_key: str):
+    def _cached_congestion_data(_self, api_key: str, event_type: str = "event"):
         params = {
             "apiKey": api_key,
             "format": "json",
-            "type": "event"
+            "type": event_type
         }
         try:
             response = requests.get(NYTrafficAPI.BASE_URL, params=params, timeout=15)
@@ -24,26 +24,35 @@ class NYTrafficAPI:
             st.error(f"Unable to fetch 511NY data: {e}")
             return []
 
-        if not data or "events" not in data:
+        # API returns a direct list, not a dict with "events" key
+        if not data or not isinstance(data, list):
             return []
 
         traffic_data = []
-        for event in data["events"]:
+        for event in data:
             try:
-                lat = float(event.get("latitude", 0))
-                lng = float(event.get("longitude", 0))
+                lat = float(event.get("Latitude", 0))
+                lng = float(event.get("Longitude", 0))
             except (TypeError, ValueError):
                 lat, lng = None, None
+            
             traffic_data.append({
-                "road": event.get("roadwayName", "Unknown Road"),
-                "description": event.get("headlineDescription", "No description"),
-                "severity": event.get("severity", "Unknown"),
-                "startTime": event.get("starttime", "N/A"),
-                "endTime": event.get("endtime", "N/A"),
+                "road": event.get("RoadwayName", "Unknown Road"),
+                "description": event.get("Description", "No description"),
+                "severity": event.get("Severity", "Unknown"),
+                "startTime": event.get("StartDate", "N/A"),
+                "endTime": event.get("PlannedEndDate", "N/A"),
                 "latitude": lat,
-                "longitude": lng
+                "longitude": lng,
+                "eventType": event.get("EventType", "Unknown"),
+                "eventSubType": event.get("EventSubType", ""),
+                "region": event.get("RegionName", ""),
+                "county": event.get("CountyName", "")
             })
         return traffic_data
 
     def get_congestion_data(self):
-        return self._cached_congestion_data(self.api_key)
+        return self._cached_congestion_data(self.api_key, "congestion")
+
+    def get_events(self, event_type: str = "event"):
+        return self._cached_congestion_data(self.api_key, event_type)
