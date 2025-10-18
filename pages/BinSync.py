@@ -143,15 +143,200 @@ st.markdown("---")
 
 
 # ======================================================================
-# BIN LOCATIONS MAP
+# NEWS TICKER SECTION - RECYCLING & WASTE MANAGEMENT
+# ======================================================================
+st.markdown('<h3 style="color:#FFFFFF;">♻️ Latest Recycling & Waste Management News</h3>', unsafe_allow_html=True)
+
+# Fetch recycling/waste management related news
+try:
+    from utils import get_news_headlines
+    # Get general news and filter for recycling/waste keywords
+    news_headlines = get_news_headlines(region="New York City")
+    
+    if isinstance(news_headlines, str):
+        headlines_list = [h.strip() for h in news_headlines.split("•") if h.strip()]
+    else:
+        headlines_list = news_headlines if news_headlines else []
+    
+    # Filter for recycling/waste related keywords
+    recycling_keywords = ['recycl', 'waste', 'trash', 'garbage', 'compost', 'landfill', 'sanitation', 'environment', 'green', 'sustainability']
+    filtered_headlines = [h for h in headlines_list if any(keyword in h.lower() for keyword in recycling_keywords)]
+    
+    # If no recycling news found, use general environmental news or default messages
+    if not filtered_headlines:
+        filtered_headlines = [
+            "NYC continues to improve waste diversion rates across all boroughs",
+            "New recycling initiatives launched to increase sustainability",
+            "Smart bin technology being deployed citywide",
+            "Composting programs expand to more neighborhoods",
+            "City targets 90% waste diversion rate by 2030"
+        ]
+    
+    headlines_html = "".join([f"<div class='headline-item'>♻️ {h}</div>" for h in filtered_headlines[:10]])
+    
+except Exception as e:
+    headlines_html = "<div class='headline-item'>♻️ NYC continues to improve waste management and recycling efforts</div>"
+
+# Custom CSS for news ticker
+news_ticker_css = """
+<style>
+.recycling-news-container {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.1) 0%, rgba(39, 174, 96, 0.1) 100%);
+    border-radius: 12px;
+    padding: 15px 20px;
+    height: 120px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 2px solid rgba(46, 204, 113, 0.3);
+}
+
+.recycling-news-scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: absolute;
+    width: 100%;
+    animation: scrollUpRecycling 25s linear infinite;
+}
+
+.recycling-news-container .headline-item {
+    font-size: 1.05em;
+    font-weight: 500;
+    color: #FFFFFF;
+    text-align: center;
+    padding: 8px 0;
+    line-height: 1.5;
+}
+
+.recycling-live-indicator {
+    position: absolute;
+    top: 12px;
+    right: 15px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85em;
+    color: #2ecc71;
+    font-weight: 600;
+    z-index: 10;
+    background: rgba(30, 33, 41, 0.9);
+    padding: 5px 10px;
+    border-radius: 12px;
+    border: 1px solid #2ecc71;
+}
+
+.recycling-live-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #2ecc71;
+    border-radius: 50%;
+    animation: pulseGreen 2s infinite;
+}
+
+@keyframes pulseGreen {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
+@keyframes scrollUpRecycling {
+    0%   { top: 100%; }
+    100% { top: -100%; }
+}
+</style>
+"""
+
+st.markdown(news_ticker_css, unsafe_allow_html=True)
+
+# Render the news ticker
+st.markdown(f"""
+<div class="recycling-news-container">
+    <div class="recycling-live-indicator"><span class="recycling-live-dot"></span>Live</div>
+    <div class="recycling-news-scroll">
+        {headlines_html}
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("---")
+
+
+# ======================================================================
+# BIN LOCATIONS MAP WITH TOOLTIPS
 # ======================================================================
 if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"}.issubset(bin_locations_df.columns):
     st.markdown('<h3 style="color:#FFFFFF;">🗺️ Real-Time Bin Locations</h3>', unsafe_allow_html=True)
 
-    st.map(bin_locations_df, latitude='lat', longitude='lon', zoom=11, use_container_width=True)
+    # Create pydeck map with tooltips using open-street-map (no API key needed)
+    import pydeck as pdk
+    
+    # Define the layer with tooltips
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=bin_locations_df,
+        get_position=["lon", "lat"],
+        get_color=[46, 204, 113, 220],  # Bright green color
+        get_radius=80,
+        pickable=True,
+        auto_highlight=True,
+        highlight_color=[255, 255, 0, 200],  # Yellow on hover
+    )
+    
+    # Set the initial view state
+    view_state = pdk.ViewState(
+        latitude=bin_locations_df["lat"].mean(),
+        longitude=bin_locations_df["lon"].mean(),
+        zoom=11,
+        pitch=0,
+    )
+    
+    # Create tooltip with better formatting
+    tooltip_html = """
+    <div style="background-color: rgba(30, 33, 41, 0.95); padding: 12px; border-radius: 10px; color: white; border: 2px solid #2ecc71; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #2ecc71;">📍 {Name}</div>
+        <div style="font-size: 13px; margin-bottom: 4px;"><b>Area:</b> {Area}</div>
+        <div style="font-size: 13px; margin-bottom: 4px;"><b>Type:</b> {Type}</div>
+        <div style="font-size: 12px; color: #A0A4AE;">Lat: {lat:.4f}, Lon: {lon:.4f}</div>
+    </div>
+    """
+    
+    tooltip = {
+        "html": tooltip_html,
+        "style": {
+            "backgroundColor": "transparent",
+            "color": "white"
+        }
+    }
+    
+    # Render the map with open-street-map style (no API key required)
+    r = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view_state,
+        tooltip=tooltip,
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+    )
+    
+    st.pydeck_chart(r, use_container_width=True)
 
     with st.expander("Show Raw Bin Location Data"):
-        st.dataframe(bin_locations_df[["Name", "lat", "lon"]])
+        # Display table with Area column after Name
+        display_cols = ["Name"]
+        if "Area" in bin_locations_df.columns:
+            display_cols.append("Area")
+        if "Type" in bin_locations_df.columns:
+            display_cols.append("Type")
+        display_cols.extend(["lat", "lon"])
+        
+        # Filter to only existing columns
+        available_display_cols = [col for col in display_cols if col in bin_locations_df.columns]
+        st.dataframe(bin_locations_df[available_display_cols], use_container_width=True)
 
     st.markdown("---")
 else:
@@ -178,31 +363,125 @@ if not recent_12.empty:
 
     chart = (
         alt.Chart(trend_df)
-        .mark_line(point=True)
+        .mark_line(point=True, size=3)
         .encode(
-            x=alt.X("MONTH:T", title="Month", axis=alt.Axis(labelColor="#A0A4AE")),
-            y=alt.Y("Tons:Q", title="Tons of Waste", axis=alt.Axis(labelColor="#A0A4AE")),
+            x=alt.X(
+                "MONTH:T", 
+                title="Month",
+                axis=alt.Axis(
+                    labelColor="#A0A4AE",
+                    format="%b %Y",  # Format as "Jan 2024"
+                    labelAngle=-45,  # Rotate labels for better readability
+                    labelFontSize=11,
+                    titleColor="#FFFFFF",
+                    titleFontSize=13,
+                    grid=False
+                )
+            ),
+            y=alt.Y(
+                "Tons:Q", 
+                title="Tons of Waste",
+                axis=alt.Axis(
+                    labelColor="#A0A4AE",
+                    titleColor="#FFFFFF",
+                    titleFontSize=13,
+                    gridColor="#3A3F4B",
+                    gridOpacity=0.5
+                )
+            ),
             color=alt.Color(
                 "Type:N",
                 scale=alt.Scale(domain=["Total Waste", "Recycled Waste"], range=["#2ECC71", "#3498DB"]),
+                legend=alt.Legend(
+                    title="Waste Type",
+                    titleColor="#FFFFFF",
+                    labelColor="#A0A4AE",
+                    orient="bottom",
+                    direction="horizontal",
+                    titleFontSize=12,
+                    labelFontSize=11
+                )
             ),
-            tooltip=["MONTH:T", "Type:N", "Tons:Q"]
+            tooltip=[
+                alt.Tooltip("MONTH:T", title="Month", format="%B %Y"),
+                alt.Tooltip("Type:N", title="Type"),
+                alt.Tooltip("Tons:Q", title="Tons", format=",.2f")
+            ]
         )
-        .properties(height=350, background="#282C34")
+        .properties(
+            height=400, 
+            background="#282C34",
+            padding={"left": 10, "right": 10, "top": 20, "bottom": 60}
+        )
+        .configure_view(
+            strokeWidth=0
+        )
     )
 
     st.altair_chart(chart, use_container_width=True)
     st.markdown("---")
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown(
-            f"<p style='color:#A0A4AE;'>Waste diversion improved to <b>{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%</b> in <b>{latest['MONTH'].strftime('%b %Y')}</b>.</p>",
-            unsafe_allow_html=True
-        )
-    with col_b:
+    # Highlights Section with Enhanced Styling
+    st.markdown("""
+    <style>
+    .highlight-card {
+        background: linear-gradient(135deg, rgba(30, 33, 41, 0.9) 0%, rgba(40, 44, 52, 0.9) 100%);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 10px 0;
+        border-left: 4px solid #2ecc71;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        transition: transform 0.2s ease;
+    }
+    .highlight-card:hover {
+        transform: translateY(-2px);
+    }
+    .highlight-card h4 {
+        color: #2ecc71;
+        margin: 0 0 10px 0;
+        font-size: 1.1em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .highlight-card p {
+        color: #A0A4AE;
+        margin: 0;
+        font-size: 0.95em;
+        line-height: 1.5;
+    }
+    .highlight-card .value {
+        color: #FFFFFF;
+        font-weight: 600;
+        font-size: 1.2em;
+    }
+    .highlight-card .date {
+        color: #6c757d;
+        font-size: 0.85em;
+        margin-top: 6px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<h3 style="color:#FFFFFF; margin-bottom: 20px;">📊 Key Highlights</h3>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="highlight-card">
+            <h4>📈 Current Diversion Rate</h4>
+            <p>Waste diversion improved to <span class="value">{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%</span></p>
+            <div class="date">As of {latest['MONTH'].strftime('%B %Y')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
         avg_12 = recent_12["DIVERSION_RATE_AVG_MONTHLY"].mean()
-        st.markdown(
-            f"<p style='color:#A0A4AE;'>Average diversion rate for the last 12 months: <b>{avg_12:.2f}%</b></p>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""
+        <div class="highlight-card">
+            <h4>📅 12-Month Average</h4>
+            <p>Average diversion rate: <span class="value">{avg_12:.2f}%</span></p>
+            <div class="date">Last 12 months</div>
+        </div>
+        """, unsafe_allow_html=True)

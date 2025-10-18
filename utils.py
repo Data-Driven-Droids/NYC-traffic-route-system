@@ -523,7 +523,10 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
         'LATITUDE': 'lat',
         'LONGITUDE': 'lon',
         'NAME': 'Name',
-        'BIN_TYPE': 'Type'
+        'BIN_TYPE': 'Type',
+        'BOROUGH': 'Area',
+        'PARK_NAME': 'Area',  # Fallback if BOROUGH doesn't exist
+        'LOCATION': 'Location'
     }
     df = df.rename(columns=rename_map)
 
@@ -534,6 +537,10 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
         df['lon'] = None
     if 'Name' not in df.columns:
         df['Name'] = 'Bin Location'
+    if 'Area' not in df.columns:
+        df['Area'] = 'NYC'
+    if 'Type' not in df.columns:
+        df['Type'] = 'Waste Bin'
 
     # 5. Remove invalid or garbage coordinates
     # Drop rows where lat/lon are missing, null, or not numbers
@@ -553,7 +560,11 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
         return None
 
     print(f"✅ SUCCESS: Fetched and cleaned {len(df)} bin locations.")
-    return df[['lat', 'lon', 'Name']]
+    
+    # Return relevant columns
+    available_cols = ['lat', 'lon', 'Name', 'Area', 'Type']
+    return_cols = [col for col in available_cols if col in df.columns]
+    return df[return_cols]
 
 
 CITY_GUARD_VIEWS: Dict[str, str] = {

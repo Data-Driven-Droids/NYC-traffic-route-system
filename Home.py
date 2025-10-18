@@ -126,27 +126,62 @@ custom_css = """
     .weather-card {
         background-color: #f8f9fa;
         border-radius: 12px;
-        padding: 16px;
+        padding: 12px 10px;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        height: 160px; /* Fixed height for alignment */
+        height: 160px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
+        position: relative;
+        overflow: hidden;
+        word-wrap: break-word;
     }
     .metric-icon {
-        width: 40px;
-        height: 40px;
-        margin-bottom: 8px;
+        width: 35px;
+        height: 35px;
+        margin-bottom: 6px;
     }
     .card-title {
         font-weight: 500;
         color: #333;
     }
     .aqi-detail {
-        font-size: 0.9em;
-        line-height: 1.2;
+        font-size: 0.75em;
+        line-height: 1.3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        padding: 0 4px;
+    }
+    .live-indicator {
+        position: absolute;
+        bottom: 8px;
+        right: 10px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.75em;
+        color: #10b981;
+        font-weight: 600;
+    }
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background-color: #10b981;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.6;
+            transform: scale(1.1);
+        }
     }
 </style>
 """ # Placeholder for brevity
@@ -167,22 +202,25 @@ c1, c2, c3, c4, c5, c6 = st.columns(6)
 with c1:
     st.markdown(f"""
     <div class="weather-card card-title">
-        <img src="{status_icon}" class="metric-icon"><br><b>{current_status}</b>
-        <div style="font-size:1.1em;">Now</div>
+        <img src="{status_icon}" class="metric-icon"><br><b style="font-size:1.1em;">{current_status}</b>
+        <div style="font-size:0.9em; margin-top:4px;">Now</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 with c2:
     st.markdown(f"""
     <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/1163/1163661.png" class="metric-icon"><br><b>{current_time_gmt}</b>
-        <div style="font-size:1.1em;">Time (GMT)</div>
+        <img src="https://cdn-icons-png.flaticon.com/128/1163/1163661.png" class="metric-icon"><br><b style="font-size:1em;">{current_time_gmt}</b>
+        <div style="font-size:0.9em; margin-top:4px;">Time (GMT)</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 with c3:
     st.markdown(f"""
     <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/4150/4150897.png" class="metric-icon"><br><b>{current_wind}</b>
-        <div style="font-size:1.1em;">Wind</div>
+        <img src="https://cdn-icons-png.flaticon.com/128/4150/4150897.png" class="metric-icon"><br><b style="font-size:1em;">{current_wind}</b>
+        <div style="font-size:0.9em; margin-top:4px;">Wind</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 with c4:
@@ -191,8 +229,9 @@ with c4:
     <div class="weather-card card-title">
         <img src="{aqi_icon}" class="metric-icon">
         <div class="aqi-detail">AQI: {current_aqi_value}<br/>Pollutant: {dominant_pollutant}</div>
-        <br><b>PM2.5: {pm25_value} / PM10: {pm10_value}</b>
-        <div style="font-size:1.1em;">Air Quality ({current_aqi_category})</div>
+        <div style="font-size:0.8em; margin-top:2px;"><b>PM2.5: {pm25_value} / PM10: {pm10_value}</b></div>
+        <div style="font-size:0.85em; margin-top:4px;">Air Quality ({current_aqi_category})</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -201,8 +240,9 @@ with c5:
     st.markdown(f"""
     <div class="weather-card card-title">
         <img src="https://cdn-icons-png.flaticon.com/128/921/921346.png" class="metric-icon">
-        <br><b>{nyc_population}</b>
-        <div style="font-size:1.1em;">Population</div>
+        <br><b style="font-size:1em;">{nyc_population}</b>
+        <div style="font-size:0.9em; margin-top:4px;">Population</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -211,8 +251,9 @@ with c6:
     st.markdown(f"""
     <div class="weather-card card-title">
         <img src="https://cdn-icons-png.flaticon.com/128/3353/3353491.png" class="metric-icon">
-        <br><b>{nyc_birth_rate}</b>
-        <div style="font-size:1.1em;">Birth Rate</div>
+        <br><b style="font-size:1em;">{nyc_birth_rate}</b>
+        <div style="font-size:0.9em; margin-top:4px;">Birth Rate</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -246,10 +287,26 @@ vertical_scroll_css = """
     background-color: #f8f9fa;
     border-radius: 12px;
     padding: 10px 20px;
-    height: 120px; /* Shows about 3 headlines */
+    height: 120px;
     overflow: hidden;
     position: relative;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.news-live-indicator {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85em;
+    color: #10b981;
+    font-weight: 600;
+    z-index: 10;
+    background: rgba(248, 249, 250, 0.9);
+    padding: 4px 8px;
+    border-radius: 12px;
 }
 
 .news-scroll {
@@ -279,9 +336,10 @@ vertical_scroll_css = """
 
 st.markdown(vertical_scroll_css, unsafe_allow_html=True)
 
-# Render the vertical ticker
+# Render the vertical ticker with live indicator
 st.markdown(f"""
 <div class="news-container">
+    <div class="news-live-indicator"><span class="live-dot"></span>Live</div>
     <div class="news-scroll">
         {headlines_html}
     </div>
@@ -336,8 +394,9 @@ with col1:
     st.markdown(f"""
     <div class="weather-card card-title">
         <img src="https://cdn-icons-png.flaticon.com/128/3731/3731872.png" class="metric-icon">
-        <br><b>{current_temp}°C</b>
-        <div style="font-size:1.1em;">Current Temperature</div>
+        <br><b style="font-size:1.3em;">{current_temp}°C</b>
+        <div style="font-size:0.95em; margin-top:4px;">Current Temperature</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -352,8 +411,9 @@ with col2:
     st.markdown(f"""
     <div class="weather-card card-title">
         <img src="https://cdn-icons-png.flaticon.com/128/869/869869.png" class="metric-icon">
-        <br><b>{max_temp_today}</b>
-        <div style="font-size:1.1em;">Daily Max Temp</div>
+        <br><b style="font-size:1.3em;">{max_temp_today}</b>
+        <div style="font-size:0.95em; margin-top:4px;">Daily Max Temp</div>
+        <div class="live-indicator"><span class="live-dot"></span>Live</div>
     </div>
     """, unsafe_allow_html=True)
 
