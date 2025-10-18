@@ -52,7 +52,7 @@ else:
 # PAGE CONFIG
 # ======================================================================
 st.set_page_config(
-    page_title="SAP Smart City - Waste Management Dashboard",
+    page_title="Smart City - Waste Management Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )

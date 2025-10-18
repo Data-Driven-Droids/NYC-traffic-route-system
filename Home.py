@@ -81,7 +81,7 @@ New York's position as a global city is undisputed. It hosts the headquarters of
 
 
 
-The city’s reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet, with hundreds of languages spoken. This rich tapestry of cultures makes every neighborhood a unique experience, from the concentrated Chinese populations in Flushing and Manhattan's Chinatown to the historic Italian-American communities.
+The city's reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet, with hundreds of languages spoken. This rich tapestry of cultures makes every neighborhood a unique experience, from the concentrated Chinese populations in Flushing and Manhattan's Chinatown to the historic Italian-American communities.
 
 
 
@@ -99,7 +99,7 @@ st.markdown("---")
 
 # --- Region Selection Dropdown ---
 selected_region = st.selectbox(
-    "Select a Region in NYC:",
+    "Select a Borough in NYC:",
     options=list(NYC_REGIONS.keys()),
     index=0 
 )

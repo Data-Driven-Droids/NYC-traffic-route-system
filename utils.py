@@ -636,7 +636,7 @@ def get_nyc_demographics() -> Optional[Dict[str, str]]:
     
     # 3. Call the Gemini 1.5 Flash model
     try:
-        print("Calling Gemini 1.5 Flash to fetch NYC demographics...")
+        print("Calling Gemini 2.5 Flash to fetch NYC demographics...")
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
         
@@ -697,3 +697,71 @@ def get_resilient_cities_data_by_view(
     )
     
     return df
+
+def get_gemini_response(prompt: str, history: list):
+    """
+    Streams a Gemini API response restricted to NYC.
+    Works safely in Streamlit without grounding or function_call errors.
+
+    Args:
+        prompt (str): The user's prompt.
+        history (list): The chat history.
+
+    Yields:
+        str: Streamed chunks of response text.
+    """
+    # --- Configure API key ---
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        yield "Error: GOOGLE_API_KEY environment variable not set."
+        return
+
+    genai.configure(api_key=api_key)
+
+    # --- Model setup ---
+    model_name = "gemini-2.5-flash"
+    nyc_restriction = (
+        "You are a helpful AI assistant whose knowledge and responses are strictly limited to "
+        "New York City (NYC). If asked about any other city, person, or topic not directly "
+        "related to NYC, you must politely decline and remind the user of this restriction."
+    )
+
+    try:
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=nyc_restriction
+        )
+    except Exception as e:
+        yield f"Error initializing Gemini model: {e}"
+        return
+
+    # --- Format chat history ---
+    gemini_history = []
+    for msg in history:
+        role = "user" if msg["role"] == "user" else "model"
+        gemini_history.append({
+            "role": role,
+            "parts": [msg.get("content", "")]
+        })
+
+    # --- Start chat session ---
+    try:
+        chat = model.start_chat(history=gemini_history)
+    except Exception as e:
+        yield f"Error starting chat: {e}"
+        return
+
+    # --- Stream response back to Streamlit ---
+    try:
+        response_stream = chat.send_message(prompt, stream=True)
+
+        for chunk in response_stream:
+            # Only process valid text chunks
+            if not hasattr(chunk, "parts"):
+                continue
+            for part in chunk.parts:
+                if hasattr(part, "text") and part.text:
+                    yield part.text
+
+    except Exception as e:
+        yield f"Sorry, I ran into an error: {e}"
