@@ -7,12 +7,12 @@ from datetime import date
 from utils import get_city_guard_data_by_view 
 
 # --- Configuration ---
-st.set_page_config(layout="wide", page_title="NYPD Dashboards")
+st.set_page_config(layout="wide", page_title="City Guard & Urban SOS")
 if 'selected_crime' not in st.session_state:
     st.session_state.selected_crime = None
 
 # ==============================================================================
-#                      1. DATA LOADING & PROCESSING
+#                       1. DATA LOADING & PROCESSING
 # ==============================================================================
 
 @st.cache_data(ttl=3600) # Cache data for 1 hour
@@ -82,7 +82,7 @@ force_data = all_data.get("force", {})
 
 
 # ==============================================================================
-#                      CHART PLOTTING FUNCTIONS
+#                       CHART PLOTTING FUNCTIONS
 # ==============================================================================
 def plot_cip_vs_non_cip(df):
     if df is None or df.empty: return st.warning("CIP data not available.")
@@ -126,11 +126,29 @@ def plot_incident_line_chart(crime_name):
 
 
 # ==============================================================================
-#                      STREAMLIT APPLICATION LAYOUT
+#                       STREAMLIT APPLICATION LAYOUT
 # ==============================================================================
 
 st.title("NYPD Dashboards")
-st.header("About City Guard Section")
+
+# --- MODIFICATION: ADDED "ABOUT THIS PAGE" SECTION ---
+with st.expander("ℹ️ About This Page", expanded=True):
+    st.markdown("""
+    This application provides a comprehensive overview of New York City Police Department (NYPD) operations, 
+    visualized across three main dashboards.
+    
+    * **Dispatch Activity:** Displays live metrics on service calls (CIP vs. Non-CIP), 
+        call types, and borough distribution. This data is fetched live from the `SERVICE_CALLS` view.
+    * **Force Dashboard:** Shows live data on use-of-force incidents, including monthly trends, 
+        types of force used, and the basis for the encounter. This data comes from the `USE_OF_FORCE` view.
+    * **CompStat 2.0:** An interactive replica of the official CompStat report. Click on any 
+        crime row (e.g., "Murder", "Robbery") to populate the map and trend charts with (static) sample data.
+    
+    **Data Source:** Live data for the 'Dispatch' and 'Force' tabs is fetched from Snowflake 
+    and cached for 1 hour to ensure performance.
+    """)
+st.markdown("---") # Add a separator
+# --- END MODIFICATION ---
 
 tab_dispatch, tab_force, tab_compstat = st.tabs(["Dispatch Activity", "Force Dashboard", "CompStat 2.0"])
 

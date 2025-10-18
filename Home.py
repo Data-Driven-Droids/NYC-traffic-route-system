@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-# NOTE: Assuming config.settings.Config and utils.py are accessible
+import asyncio
 from config.settings import Config 
-# --- MODIFICATION: Import the new Gemini function ---
 from utils import get_weather_data_nyc, get_air_quality_data_nyc, get_news_headlines, get_nyc_demographics
 
 # 1. Define NYC Subregions and Coordinates 📍
@@ -27,15 +26,19 @@ st.set_page_config(
 # --- Data Fetching and Caching ---
 # ====================================================================================================
 
-# --- MODIFICATION: New cached function to fetch demographic data once per day ---
 @st.cache_data(ttl=86400) # Cache for 24 hours
 def load_demographics_data():
     """Fetches NYC demographics from Gemini and caches the result."""
-    return get_nyc_demographics()
+    # We must use asyncio.run() to execute the async function and get its result
+    try:
+        return asyncio.run(get_nyc_demographics())
+    except Exception as e:
+        st.error(f"Error running async demographic fetch: {e}")
+        return None
 
 # Load the demographic data
 demographics_data = load_demographics_data()
-
+print(demographics_data)
 # Extract values with a fallback if the API call fails
 if demographics_data:
     nyc_population = demographics_data.get('population', 'N/A')
@@ -51,49 +54,24 @@ else:
 
 st.title("🗽 New York City: The Crossroads of the World")
 
-
-
 st.markdown("""
-
 New York City, affectionately known as "The Big Apple," is the most populous and influential metropolis in the United States. Situated at the mouth of the Hudson River on one of the world's largest natural harbors, NYC is a **global center for finance, media, art, fashion, technology, and international diplomacy**. It is often described as the cultural capital of the world, with a dynamism fueled by its incredible diversity.
 
-
-
 ### The Five Boroughs
-
 The city is geographically composed of five distinct boroughs, each of which is a county of New York State, consolidated into a single entity in 1898:
-
-* **Manhattan** (New York County): The commercial, financial, and cultural heart, home to Wall Street, Times Square, Central Park, and the iconic skyscraper skyline.
-
-* **Brooklyn** (Kings County): The most populous borough, celebrated for its artistic flair, historic brownstones, and vibrant neighborhood diversity, from Williamsburg to Coney Island.
-
-* **Queens** (Queens County): The most ethnically diverse urban area in the world, hosting both JFK and LaGuardia airports and major sports venues like the USTA Billie Jean King National Tennis Center.
-
-* **The Bronx** (Bronx County): The birthplace of hip-hop and salsa music, featuring Yankee Stadium and expansive green spaces like the Bronx Zoo and Pelham Bay Park.
-
-* **Staten Island** (Richmond County): Offers a quieter, more suburban environment, connected to Manhattan by the famous free Staten Island Ferry, which provides stunning views of the Statue of Liberty.
-
-
+* **Manhattan** (New York County): The commercial, financial, and cultural heart.
+* **Brooklyn** (Kings County): The most populous borough, celebrated for its artistic flair.
+* **Queens** (Queens County): The most ethnically diverse urban area in the world.
+* **The Bronx** (Bronx County): The birthplace of hip-hop and salsa music.
+* **Staten Island** (Richmond County): Offers a quieter, more suburban environment.
 
 ### A Beacon of Global Influence
+New York's position as a global city is undisputed. It hosts the headquarters of the **United Nations**, and its two largest stock exchanges, the **New York Stock Exchange (NYSE)** and **NASDAQ**, anchor the world's financial markets.
 
-New York's position as a global city is undisputed. It hosts the headquarters of the **United Nations**, solidifying its role in world affairs. Its two largest stock exchanges, the **New York Stock Exchange (NYSE)** and **NASDAQ**, anchor the world's financial markets. Furthermore, its influence in the arts—from the Broadway Theater District to world-class institutions like the Metropolitan Museum of Art—shapes global trends in entertainment and culture.
+The city's reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet. This rich tapestry of cultures makes every neighborhood a unique experience.
 
-
-
-The city's reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet, with hundreds of languages spoken. This rich tapestry of cultures makes every neighborhood a unique experience, from the concentrated Chinese populations in Flushing and Manhattan's Chinatown to the historic Italian-American communities.
-
-
-
-Despite its constant rush and notorious traffic, New York offers extensive green retreats, most famously the 843 acres of **Central Park**. The city’s robust 24/7 public transit system, the New York City Subway, allows millions of residents and visitors to navigate this dense urban environment.
-
-
-
-In essence, New York City is a relentless, ever-evolving megacity—a powerful symbol of ambition, resilience, and the enduring promise of a place where people from every corner of the globe can contribute to a collective, unforgettable energy.
-
+Despite its constant rush, New York offers extensive green retreats, most famously the 843 acres of **Central Park**. The city’s robust 24/7 public transit system, the New York City Subway, allows millions to navigate this dense urban environment.
 """)
-
-
 
 st.markdown("---")
 
@@ -139,7 +117,39 @@ else:
 
 # --- Custom CSS (Unchanged) ---
 # ... (Your custom_css string remains here) ...
-custom_css = "<style>...</style>" # Placeholder for brevity
+custom_css = """
+<style>
+    /* Example: Add some breathing room for the cards */
+    .st-emotion-cache-1e5imcs {
+        gap: 1rem;
+    }
+    .weather-card {
+        background-color: #f8f9fa;
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        height: 160px; /* Fixed height for alignment */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    .metric-icon {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 8px;
+    }
+    .card-title {
+        font-weight: 500;
+        color: #333;
+    }
+    .aqi-detail {
+        font-size: 0.9em;
+        line-height: 1.2;
+    }
+</style>
+""" # Placeholder for brevity
 st.markdown(custom_css, unsafe_allow_html=True)
 
 st.sidebar.title("New York City 360 Dashboard")
@@ -152,7 +162,6 @@ st.subheader("Live Weather, Air Quality & Demographics Overview")
 # --- Row 1: Top Cards (MODIFIED to 6 COLUMNS) ---
 # ====================================================================================================
 
-# --- MODIFICATION: Changed from st.columns(4) to st.columns(6) ---
 c1, c2, c3, c4, c5, c6 = st.columns(6) 
 
 with c1:
@@ -221,6 +230,8 @@ try:
     if isinstance(headlines_list, str):
         # Split if returned as a single string
         headlines_list = [h.strip() for h in headlines_list.split("•") if h.strip()]
+    if not headlines_list:
+        headlines_list = ["No recent headlines found."]
 except Exception as e:
     headlines_list = [f"Could not fetch news headlines: {e}"]
     st.warning("Ensure 'requests' is installed and your NewsAPI key is set in Config.")
@@ -263,6 +274,7 @@ vertical_scroll_css = """
     0%   { top: 100%; }
     100% { top: -100%; }
 }
+</style>
 """
 
 st.markdown(vertical_scroll_css, unsafe_allow_html=True)
@@ -292,20 +304,18 @@ map_query = map_query.replace(' ', '+') # Format for URL
 
 try:
     api_key = Config.GOOGLE_MAPS_API_KEY # Access the key
-except (NameError, AttributeError):
+except (NameError, AttributeError, KeyError):
     api_key = "YOUR_API_KEY_PLACEHOLDER" # Fallback if Config isn't properly defined
     st.warning("Google Maps API key not found in Config. Displaying placeholder.")
 
 with c_map:
-    # Update the iframe src to use the selected region's coordinates/query
-    # NOTE: The Google Maps URL must be properly formed for security and functionality.
-    # The URL below is a general embed format which often requires a full API key.
-    # It uses latitude/longitude for centering and a query for a marker.
+    # --- MODIFICATION: Corrected the Google Maps Embed URL ---
     st.markdown(f"""
     <div style="border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px #20204033;">
         <iframe
             width="100%"
-            height="350"  style="border:0"
+            height="350"
+            style="border:0"
             loading="lazy"
             allowfullscreen
             referrerpolicy="no-referrer-when-downgrade"

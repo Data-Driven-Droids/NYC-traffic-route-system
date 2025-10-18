@@ -11,7 +11,7 @@ st.set_page_config(page_title="Resilient Cities Dashboard", layout="wide")
 
 
 # ==============================================================================
-#                      1. DATA LOADING & PROCESSING
+#                       1. DATA LOADING & PROCESSING
 # ==============================================================================
 @st.cache_data(ttl=3600) # Cache data for 1 hour
 def load_data():
@@ -26,7 +26,7 @@ df_emergency, df_projects, df_311 = load_data()
 
 
 # ==============================================================================
-#                      2. HELPER FUNCTIONS FOR DISPLAY
+#                       2. HELPER FUNCTIONS FOR DISPLAY
 # ==============================================================================
 def display_emergency_table(title, data, headers):
     """Helper function to render a formatted table section for Tab 1."""
@@ -52,10 +52,26 @@ def parse_geom(geom_str):
     return None, None
 
 # ==============================================================================
-#                      3. STREAMLIT APP LAYOUT
+#                       3. STREAMLIT APP LAYOUT
 # ==============================================================================
 
 st.title("🏙️ NYC Resilient Cities Dashboard")
+
+# --- MODIFICATION: Added "About" section ---
+with st.expander("ℹ️ About This Dashboard", expanded=False):
+    st.markdown("""
+    This dashboard provides a multi-faceted view of New York City's resilience and operational status, 
+    drawing live data from several city databases.
+    
+    * **Emergency Response Metrics:** Tracks weekly response times for 911 calls, segmented by agency (EMS, FDNY, NYPD).
+    * **Capital Projects:** Shows the locations and financial commitments for major city capital projects.
+    * **311 Service Requests:** Analyzes non-emergency 311 service requests, filterable by borough and status.
+    
+    All data is fetched from Snowflake views and cached for one hour.
+    """)
+st.markdown("---")
+# --- END MODIFICATION ---
+
 
 # Create the three tabs
 tab1, tab2, tab3 = st.tabs([
@@ -97,7 +113,6 @@ with tab1:
     else:
         st.error("Could not load Emergency Response data from Snowflake.")
 
-
 # ------------------------------------------------------------------------------
 # --- TAB 2: CAPITAL PROJECTS ---
 # ------------------------------------------------------------------------------
@@ -106,11 +121,23 @@ with tab2:
     if df_projects is not None and not df_projects.empty:
         df_projects.columns = [col.upper() for col in df_projects.columns]
 
+        # --- FIX: Convert the column to numbers before summing ---
+        # pd.to_numeric converts the column, and errors='coerce'
+        # will turn any non-numeric text (like 'N/A') into NaN.
+        df_projects['PLANNEDCOMMIT_TOTAL'] = pd.to_numeric(
+            df_projects['PLANNEDCOMMIT_TOTAL'], errors='coerce'
+        )
+
         # Show key metrics
         total_projects = df_projects['PROJECTID'].nunique()
+        
+        # Now .sum() will work correctly, adding the numbers
         total_commitment = df_projects['PLANNEDCOMMIT_TOTAL'].sum()
+        
         m1, m2 = st.columns(2)
         m1.metric("Total Unique Projects", f"{total_projects:,}")
+        
+        # This formatting will now work because total_commitment is a number
         m2.metric("Total Planned Commitment", f"${total_commitment:,.0f}")
         st.markdown("---")
 

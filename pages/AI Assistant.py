@@ -1,52 +1,65 @@
 import streamlit as st
-from utils import get_gemini_response  # Import the function from your utils file
+from utils import stream_gemini_response  # Async Gemini utility
 
-# --- Custom CSS for "Flashy" Look ---
+# --- Page Configuration ---
+# This must be the first Streamlit command in your script
+st.set_page_config(
+    page_title="NYC City 360",
+    page_icon="✨",
+    layout="centered"
+)
+
+# --- Custom CSS for a Polished Look ---
 st.markdown("""
 <style>
     /* Main app background */
     .stApp {
-        background: #0e1117; /* Dark background */
-    }
-
-    /* Increase caption font size */
-    [data-testid="stCaptionContainer"] {
-        font-size: 1.1em !important;
+        background-color: #0e1117;
     }
 
     /* Chat message containers */
     [data-testid="stChatMessage"] {
-        border-radius: 0px; /* Sharp corners for messages */
-        margin-bottom: 10px;
-        padding: 16px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-radius: 12px; /* Softer corners */
+        margin-bottom: 1rem;
+        padding: 1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         animation: fadeIn 0.5s ease-in-out;
+        width: 90%; /* Prevent messages from spanning the full width */
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    /* User message styling for dark theme */
-    .st-emotion-cache-1c7y2kd {
-        background-color: #262730; /* Slightly lighter background for user message */
+    /* --- STABLE SELECTORS FOR USER AND ASSISTANT MESSAGES --- */
+    /* We use :has() to select the parent container based on a stable child element */
+
+    /* User message styling */
+    [data-testid="stChatMessage"]:has(.st-chat-message-container.user) {
+        background-color: #262730;
+        margin-left: auto; /* Align to the right */
+        margin-right: 0;
     }
 
-    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
-        color: #FFFFFF; /* White text for user */
-    }
-
-    /* Assistant message */
-    [data-testid="stChatMessage"]:has([data-testid="stMarkdownContainer"] p) {
+    /* Assistant message styling */
+    [data-testid="stChatMessage"]:has(.st-chat-message-container.assistant) {
         background: linear-gradient(135deg, #6e45e2 0%, #88d3ce 100%);
-        color: white; /* White text for assistant */
+        margin-left: 0; /* Align to the left */
+        margin-right: auto;
+    }
+
+    /* Ensure text inside all markdown containers is white and readable */
+    [data-testid="stMarkdownContainer"] p {
+        color: #FFFFFF !important;
+    }
+
+    /* --- MODIFICATION: Increase caption font size --- */
+    [data-testid="stCaptionContainer"] p {
+        font-size: 1.3em !important; /* Or any size you prefer, e.g., 16px */
+        color: rgba(255, 255, 255, 0.75) !important; /* Adjust color for readability */
     }
     
-    [data-testid="stChatMessage"]:has([data-testid="stMarkdownContainer"] p) p {
-        color: white; /* Ensure assistant text is white */
-    }
-
     /* Chat input box */
     [data-testid="stChatInput"] {
-        border: 0px solid #6e45e2;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
         background-color: #0e1117;
-        border-radius: 2px;
     }
 
     /* Fade-in animation for new messages */
@@ -64,56 +77,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- Page Configuration ---
-st.set_page_config(
-    page_title="NYC City 360",
-    page_icon="✨",
-    layout="centered"
-)
-
 # --- App Title & Caption ---
-st.title("NYC City 360 Assistant")
+st.title("NYC City 360 Assistant ✨")
 st.caption("Welcome to your NYC City 360 Assistant, the all-in-one interactive chatbot for navigating the five boroughs. Powered by the speed of Google's Gemini, this tool provides a comprehensive, 360-degree view of the city in real time. Get instant, streaming answers on weather, air quality, traffic conditions, public safety, and more. Our assistant is strictly focused only on New York City, guaranteeing you receive the most relevant, local information. If it's not about NYC, we won't answer it. Ask anything about life in the city and get an immediate, focused response.")
 
+st.sidebar.title("NYC 360 AI Assistant")
 
-# --- Initialize Session State & Add Default Greeting ---
+# --- Initialize session state ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": "Hello! How can I help you navigate NYC today? Ask me anything about traffic, weather, or local information."
+        }
+    ]
 
-# Add a default greeting if the chat is empty
-if not st.session_state.messages:
-    st.session_state.messages.append({
-        "role": "assistant", 
-        "content": "Hello! I'm your dedicated NYC assistant. Ask me anything about traffic, weather, or life in the five boroughs."
-    })
-
-# --- Display Chat History ---
+# --- Display chat history ---
 for message in st.session_state.messages:
+    # Use role to determine the avatar and styling
     avatar = "👤" if message["role"] == "user" else "✨"
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-# --- Chat Input and Response Logic ---
-if prompt := st.chat_input("Ask about NYC..."):
-    
-    # 1. Add user message to history
+# --- Chat Input and Response Streaming ---
+if prompt := st.chat_input("Ask about traffic, weather, or safety in NYC..."):
+    # 1. Add and display the user's message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # 2. Display user message
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
-    
-    # 3. Get and display bot response (streaming)
+
+    # 2. Stream and display the assistant's response
     with st.chat_message("assistant", avatar="✨"):
-        
-        # Prepare the history for the API call
-        history_for_api = [msg for msg in st.session_state.messages]
-        
-        # Call the streaming function and display the response
-        response_stream = get_gemini_response(prompt, history=history_for_api)
-        
-        # st.write_stream is the key to the "live" typing effect
-        full_response = st.write_stream(response_stream)
-    
-    # 4. Add the full bot response to history
+        # Use st.write_stream for a cleaner, more robust implementation
+        # This works with both sync and async generators
+        full_response = st.write_stream(stream_gemini_response(prompt, st.session_state.messages))
+
+    # 3. Add the complete assistant response to the session state
     st.session_state.messages.append({"role": "assistant", "content": full_response})

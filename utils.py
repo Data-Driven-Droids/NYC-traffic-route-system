@@ -8,7 +8,8 @@ import pandas as pd
 from datetime import datetime
 from config.settings import Config
 import json as json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv() 
 
@@ -600,31 +601,21 @@ def get_city_guard_data_by_view(
     
     return df
 
-def get_nyc_demographics() -> Optional[Dict[str, str]]:
+async def get_nyc_demographics() -> Optional[Dict[str, str]]:
     """
-    Calls the Gemini 1.5 Flash model to get the latest population and birth rate for NYC.
+    Calls the stream_gemini_response function to get the latest
+    population and birth rate for NYC, then parses the full response.
 
-    This function securely retrieves a Google API key from environment variables,
-    sends a structured prompt to the Gemini API, and parses the JSON response.
-
-    Returns:
-        Optional[Dict[str, str]]: A dictionary with 'population' and 'birth_rate'
-        if successful, otherwise None.
+    This function now aggregates the streamed chunks into a single
+    JSON string and then processes it.
     """
-    # Load environment variables from a .env file
+    # 1. Load environment variables
     load_dotenv()
     
-    # 1. Configure the Gemini API
-    try:
-        api_key = os.environ["GOOGLE_API_KEY"]
-        genai.configure(api_key=api_key)
-    except KeyError:
-        print("🚨 ERROR: GOOGLE_API_KEY not found. Please set it in your .env file.")
-        return None
-
-    # 2. Craft a clear, structured prompt
+    # 2. Craft the specific prompt
     prompt = """
     What is the latest estimated population and the latest reported birth rate for New York City?
+    Provide ony numbers and nothing else.
     Provide the answer in a strict JSON format with two keys: "population" and "birth_rate".
     
     For example:
@@ -634,28 +625,42 @@ def get_nyc_demographics() -> Optional[Dict[str, str]]:
     }
     """
     
-    # 3. Call the Gemini 1.5 Flash model
+    # 3. Call the streaming function and aggregate the response
+    full_response = ""
+    print("Calling Gemini 2.5 Flash to fetch NYC demographics (via stream)...")
+    
     try:
-        print("Calling Gemini 2.5 Flash to fetch NYC demographics...")
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        response = model.generate_content(prompt)
+        # Use the "gemini-2.5-flash" model for this specific task
+        async for chunk in stream_gemini_response(
+            prompt=prompt,
+            history=[],
+        ):
+            if chunk.startswith("Error:"):
+                print(f"🚨 {chunk}")
+                return None
+            full_response += chunk
         
-        # Clean up the response to extract only the JSON part
-        response_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+        print(full_response)
+        print("++++++++++++++++++++ ")
+        # 4. Clean and parse the aggregated JSON response
+        response_text = full_response.strip().replace("```json", "").replace("```", "").strip()
         
-        # 4. Parse the JSON response
+        if not response_text:
+            print("⚠️ ERROR: Received an empty response from the model.")
+            return None
+            
         data = json.loads(response_text)
         
-        # Validate that the expected keys are in the response
-        if "population" in data and "birth_rate" in data:
-            print("✅ Successfully fetched and parsed data.")
+        # 5. Perform specific validation
+        if data and isinstance(data, dict) and "population" in data and "birth_rate" in data:
+            print("✅ Successfully fetched, aggregated, and parsed data.")
             return data
         else:
-            print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys.")
+            print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys or was not a dict.")
             return None
 
     except json.JSONDecodeError:
-        print(f"❌ ERROR: Failed to decode JSON from the model's response. Response was:\n{response_text}")
+        print(f"❌ ERROR: Failed to decode JSON from the aggregated model's response. Response was:\n{response_text}")
         return None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
@@ -698,70 +703,69 @@ def get_resilient_cities_data_by_view(
     
     return df
 
-def get_gemini_response(prompt: str, history: list):
+async def stream_gemini_response(
+    prompt: str,
+    history: list,
+    model_name: str = "gemini-live-2.5-flash-preview",
+    system_instruction: Optional[str] = None,
+    tools: Optional[list] = None
+):
     """
-    Streams a Gemini API response restricted to NYC.
-    Works safely in Streamlit without grounding or function_call errors.
+    Async generator to stream Gemini responses.
 
     Args:
-        prompt (str): The user's prompt.
-        history (list): The chat history.
+        prompt (str): User's current prompt.
+        history (list): Chat history in format [{"role": "user"/"model", "content": str}]
+        model_name (str): The name of the Gemini model to use.
+        system_instruction (Optional[str]): An optional system-level instruction.
+        tools (Optional[list]): A list of tools, e.g., [{"google_search": {}}].
 
     Yields:
-        str: Streamed chunks of response text.
+        str: Chunks of response text from Gemini.
     """
-    # --- Configure API key ---
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         yield "Error: GOOGLE_API_KEY environment variable not set."
         return
 
-    genai.configure(api_key=api_key)
+    client = genai.Client()
 
-    # --- Model setup ---
-    model_name = "gemini-2.5-flash"
-    nyc_restriction = (
-        "You are a helpful AI assistant whose knowledge and responses are strictly limited to "
-        "New York City (NYC). If asked about any other city, person, or topic not directly "
-        "related to NYC, you must politely decline and remind the user of this restriction."
-    )
-
-    try:
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=nyc_restriction
-        )
-    except Exception as e:
-        yield f"Error initializing Gemini model: {e}"
-        return
-
-    # --- Format chat history ---
-    gemini_history = []
+    # Prepare chat history in Gemini live session format
+    turns = []
     for msg in history:
-        role = "user" if msg["role"] == "user" else "model"
-        gemini_history.append({
-            "role": role,
-            "parts": [msg.get("content", "")]
-        })
+        role = "user" if msg["role"] == "user" else "assistant"
+        turns.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
 
-    # --- Start chat session ---
+    # Add current prompt as the latest user turn
+    turns.append({"role": "user", "parts": [{"text": prompt}]})
+
+    # Build config dynamically based on provided arguments
+    config = {"response_modalities": ["TEXT"]}
+    if tools:
+        config["tools"] = tools
+    if system_instruction:
+        config["system_instruction"] = system_instruction
+
     try:
-        chat = model.start_chat(history=gemini_history)
+        async with client.aio.live.connect(model=model_name, config=config) as session:
+            await session.send_client_content(turns=turns)
+
+            async for chunk in session.receive():
+                if chunk.server_content:
+                    if chunk.text:
+                        yield chunk.text
+
+                    # Optional: handle generated code
+                    model_turn = chunk.server_content.model_turn
+                    if model_turn:
+                        for part in model_turn.parts:
+                            if getattr(part, "executable_code", None):
+                                yield f"[Code generated by model]:\n{part.executable_code.code}"
+                            if getattr(part, "code_execution_result", None):
+                                yield f"[Code result]:\n{part.code_execution_result.output}"
+
     except Exception as e:
-        yield f"Error starting chat: {e}"
-        return
-
-    # --- Stream response back to Streamlit ---
-    try:
-        response_stream = chat.send_message(prompt, stream=True)
-
-        for chunk in response_stream:
-            # Only process valid text chunks
-            if not hasattr(chunk, "parts"):
-                continue
-            for part in chunk.parts:
-                if hasattr(part, "text") and part.text:
-                    yield part.text
+        yield f"Error streaming Gemini response: {e}"
 
     except Exception as e:
-        yield f"Sorry, I ran into an error: {e}"
+        yield f"Error streaming Gemini response: {e}"
