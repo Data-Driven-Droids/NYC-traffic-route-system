@@ -10,7 +10,7 @@ from utils import calculate_monthly_waste_metrics, get_bin_locations_data
 
 @st.cache_data
 def load_monthly_data():
-    df = calculate_monthly_waste_metrics()  # <-- your backend/snowflake fetch
+    df = calculate_monthly_waste_metrics()
     if df is not None and not df.empty:
         # Convert 'MONTH' safely from "YYYY / MM" → datetime
         df["MONTH"] = (
@@ -25,7 +25,7 @@ def load_monthly_data():
 
 @st.cache_data
 def load_bin_locations():
-    df = get_bin_locations_data()  # <-- your backend/snowflake fetch
+    df = get_bin_locations_data()
     return df
 
 
@@ -35,7 +35,6 @@ def load_bin_locations():
 monthly_df = load_monthly_data()
 bin_locations_df = load_bin_locations()
 
-# Handle missing monthly data
 if monthly_df is not None and not monthly_df.empty:
     latest = monthly_df.iloc[-1]
     recent_12 = monthly_df.tail(12)
@@ -50,7 +49,7 @@ else:
 
 
 # ======================================================================
-# PAGE SETUP
+# PAGE CONFIG
 # ======================================================================
 st.set_page_config(
     page_title="SAP Smart City - Waste Management Dashboard",
@@ -58,7 +57,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Custom CSS for dark SAP-style theme ---
+# --- Custom CSS ---
 st.markdown("""
 <style>
     .main { background-color: #1E2129; }
@@ -69,46 +68,85 @@ st.markdown("""
         font-size: 0.9rem; color: #A0A4AE;
     }
     hr { border: 0; border-top: 1px solid #3A3F4B; }
+    h2, h3, p { color: #FFFFFF; }
+    button[data-testid="stBaseButton-secondary"] {
+        background: #2F3240 !important;
+        color: #00BFFF !important;
+        border-radius: 50%;
+        font-weight: bold;
+        padding: 2px 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ======================================================================
-# DASHBOARD TITLE
-# ======================================================================
-st.markdown('<h2 style="color:#FFFFFF;">Smart City - Waste Management</h2>', unsafe_allow_html=True)
-
-# Safely show date if valid
-if pd.notnull(latest["MONTH"]) and isinstance(latest["MONTH"], pd.Timestamp):
-    formatted_date = latest["MONTH"].strftime("%b %Y")
-else:
-    formatted_date = "Unknown"
-
-st.markdown(
-    f"<p style='color:#A0A4AE;'>Showing data till <b>{formatted_date}</b></p>",
-    unsafe_allow_html=True
-)
 
 # ======================================================================
-# ROW 1: METRICS
+# ABOUT SECTION
+# ======================================================================
+st.markdown("""
+<h2 style='text-align:center; color:#FFFFFF;'>🌍 Smart City - Waste Management Dashboard</h2>
+<p style='text-align:center; color:#A0A4AE;'>
+This dashboard provides a real-time view of <b>waste generation, recycling performance,</b> and <b>bin locations</b> across the city.<br>
+It helps city administrators monitor sustainability efforts and track diversion rates effectively.
+</p>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+
+# ======================================================================
+# METRICS WITH INFO BUTTONS
 # ======================================================================
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("Total Waste Collected", f"{latest['TOTAL_WASTE_TONS_MONTHLY']:,.2f}", "Tons")
+    with st.container():
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.metric("Total Waste Collected", f"{latest['TOTAL_WASTE_TONS_MONTHLY']:,.2f}", "Tons")
+        with c2:
+            with st.popover("ℹ️"):
+                st.markdown("""
+                **Total Waste Collected**  
+                The total tonnage of municipal solid waste generated across the city for the given month.  
+                Includes both recyclable and non-recyclable materials.
+                """)
 
 with col2:
-    st.metric("Total Recycled Waste", f"{latest['TOTAL_RECYCLED_TONS_MONTHLY']:,.2f}", "Tons")
+    with st.container():
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.metric("Total Recycled Waste", f"{latest['TOTAL_RECYCLED_TONS_MONTHLY']:,.2f}", "Tons")
+        with c2:
+            with st.popover("ℹ️"):
+                st.markdown("""
+                **Total Recycled Waste**  
+                The portion of collected waste that has been processed and reused  
+                through recycling or composting facilities in the same period.
+                """)
 
 with col3:
-    st.metric("Average Diversion Rate", f"{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%", "Recycled / Total")
+    with st.container():
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.metric("Average Diversion Rate", f"{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%", "Recycled / Total")
+        with c2:
+            with st.popover("ℹ️"):
+                st.markdown("""
+                **Diversion Rate (%)**  
+                The percentage of waste diverted away from landfills through recycling or composting.  
+                Calculated as:  
+                **(Recycled Waste ÷ Total Waste) × 100**
+                """)
 
 st.markdown("---")
 
+
 # ======================================================================
-# ROW 2: BIN LOCATIONS MAP
+# BIN LOCATIONS MAP
 # ======================================================================
 if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"}.issubset(bin_locations_df.columns):
-    st.markdown('<h3 style="color:#FFFFFF;">Real-Time Bin Locations</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#FFFFFF;">🗺️ Real-Time Bin Locations</h3>', unsafe_allow_html=True)
 
     st.map(bin_locations_df, latitude='lat', longitude='lon', zoom=11, use_container_width=True)
 
@@ -117,13 +155,14 @@ if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"
 
     st.markdown("---")
 else:
-    st.warning("⚠️ Could not load or display bin location data from Snowflake. Check connection parameters and view columns.")
+    st.warning("⚠️ Could not load or display bin location data. Check data source or Snowflake connection.")
+
 
 # ======================================================================
-# ROW 3: TREND CHART
+# TREND CHART
 # ======================================================================
 if not recent_12.empty:
-    st.markdown('<h3 style="color:#FFFFFF;">12-Month Trend: Waste vs Recycled</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#FFFFFF;">📈 12-Month Trend: Waste vs Recycled</h3>', unsafe_allow_html=True)
 
     trend_df = recent_12.melt(
         id_vars="MONTH",
@@ -158,7 +197,7 @@ if not recent_12.empty:
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown(
-            f"<p style='color:#A0A4AE;'>Waste diversion improved to <b>{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%</b> in <b>{formatted_date}</b>.</p>",
+            f"<p style='color:#A0A4AE;'>Waste diversion improved to <b>{latest['DIVERSION_RATE_AVG_MONTHLY']:.2f}%</b> in <b>{latest['MONTH'].strftime('%b %Y')}</b>.</p>",
             unsafe_allow_html=True
         )
     with col_b:

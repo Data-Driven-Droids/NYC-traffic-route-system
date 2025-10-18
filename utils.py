@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime
 from config.settings import Config
 import json as json
+import google.generativeai as genai
 
 load_dotenv() 
 
@@ -244,8 +245,8 @@ def get_news_headlines(region: str) -> str:
 
     # Construct the query to be broad for NYC news, and specific to the region
     search_query = f"New York City AND {region}"
-    url = f"https://newsapi.org/v2/everything?q={search_query}&sortBy=publishedAt&language=en&pageSize=10&apiKey={api_key}"
-    
+    url = f"https://newsapi.org/v2/everything?q={search_query}&sortBy=publishedAt&language=en&pageSize=100&apiKey={api_key}"
+
     try:
         response = requests.get(url, timeout=5)
         response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
@@ -552,3 +553,147 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
 
     print(f"✅ SUCCESS: Fetched and cleaned {len(df)} bin locations.")
     return df[['lat', 'lon', 'Name']]
+
+
+CITY_GUARD_VIEWS: Dict[str, str] = {
+    "SERVICE_CALLS": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS",
+    "USE_OF_FORCE": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_USE_OF_FORCE_INCIDENTS",
+    "NYC_CRIMES": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYC_CRIMES"
+}
+
+def get_city_guard_data_by_view(
+    view_key: str,
+    conn_params: Optional[Dict[str, str]] = None,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    account: Optional[str] = None,
+    warehouse: Optional[str] = None,
+    database: Optional[str] = None,
+    schema: Optional[str] = None
+) -> Optional[pd.DataFrame]:
+    """
+    Fetches data from a specified City Guard view in Snowflake.
+    """
+    view_key = view_key.upper()
+    view_name = CITY_GUARD_VIEWS.get(view_key)
+    
+    if view_name is None:
+        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(CITY_GUARD_VIEWS.keys())}")
+        return None
+    
+    query = f"SELECT * FROM {view_name};"
+    
+    print(f"\n=======================================================")
+    print(f"Attempting to fetch data for view: {view_key}")
+    print(f"=======================================================")
+
+    df = fetch_data_from_snowflake(
+        query=query,
+        conn_params=conn_params,
+        user=user,
+        password=password,
+        account=account,
+        warehouse=warehouse,
+        database=database,
+        schema=schema
+    )
+    
+    return df
+
+def get_nyc_demographics() -> Optional[Dict[str, str]]:
+    """
+    Calls the Gemini 1.5 Flash model to get the latest population and birth rate for NYC.
+
+    This function securely retrieves a Google API key from environment variables,
+    sends a structured prompt to the Gemini API, and parses the JSON response.
+
+    Returns:
+        Optional[Dict[str, str]]: A dictionary with 'population' and 'birth_rate'
+        if successful, otherwise None.
+    """
+    # Load environment variables from a .env file
+    load_dotenv()
+    
+    # 1. Configure the Gemini API
+    try:
+        api_key = os.environ["GOOGLE_API_KEY"]
+        genai.configure(api_key=api_key)
+    except KeyError:
+        print("🚨 ERROR: GOOGLE_API_KEY not found. Please set it in your .env file.")
+        return None
+
+    # 2. Craft a clear, structured prompt
+    prompt = """
+    What is the latest estimated population and the latest reported birth rate for New York City?
+    Provide the answer in a strict JSON format with two keys: "population" and "birth_rate".
+    
+    For example:
+    {
+      "population": "8.5 million (as of 2023)",
+      "birth_rate": "11.2 births per 1,000 people (as of 2022)"
+    }
+    """
+    
+    # 3. Call the Gemini 1.5 Flash model
+    try:
+        print("Calling Gemini 1.5 Flash to fetch NYC demographics...")
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        
+        # Clean up the response to extract only the JSON part
+        response_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+        
+        # 4. Parse the JSON response
+        data = json.loads(response_text)
+        
+        # Validate that the expected keys are in the response
+        if "population" in data and "birth_rate" in data:
+            print("✅ Successfully fetched and parsed data.")
+            return data
+        else:
+            print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys.")
+            return None
+
+    except json.JSONDecodeError:
+        print(f"❌ ERROR: Failed to decode JSON from the model's response. Response was:\n{response_text}")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return None
+    
+    
+RESILIENT_CITIES_VIEWS: Dict[str, str] = {
+    "EMERGENCY_RESPONSE": "DEV_PREMIER_LEAGUE.RESILIENT_CITIES.VW_NYC_EMERGENCY_RESPONSE_METRICS",
+    "CAPITAL_PROJECTS": "DEV_PREMIER_LEAGUE.RESILIENT_CITIES.VW_NYC_CAPITAL_PROJECTS_LOCATIONS",
+    "311_REQUESTS": "DEV_PREMIER_LEAGUE.RESILIENT_CITIES.VW_NYC_311_SERVICE_REQUESTS_ENRICHED"
+}
+
+
+# --- New Data Fetching Function for Resilient Cities ---
+def get_resilient_cities_data_by_view(
+    view_key: str,
+    conn_params: Optional[Dict[str, str]] = None
+) -> Optional[pd.DataFrame]:
+    """
+    Fetches data from a specified Resilient Cities view in Snowflake.
+    """
+    view_key = view_key.upper()
+    view_name = RESILIENT_CITIES_VIEWS.get(view_key)
+    
+    if view_name is None:
+        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(RESILIENT_CITIES_VIEWS.keys())}")
+        return None
+    
+    query = f"SELECT * FROM {view_name};"
+    
+    print(f"\n=======================================================")
+    print(f"Attempting to fetch data for view: {view_key}")
+    print(f"=======================================================")
+
+    # This reuses your generic fetch function
+    df = fetch_data_from_snowflake(
+        query=query,
+        conn_params=conn_params
+    )
+    
+    return df
