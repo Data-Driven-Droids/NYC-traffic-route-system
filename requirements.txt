@@ -1,10 +1,14 @@
 streamlit==1.28.1
+setuptools
 folium==0.14.0
 streamlit-folium==0.15.0
 pandas==2.3.3
-numpy==1.24.3
 python-dotenv==1.0.0
 requests==2.31.0
 geopy==2.4.0
-python-dotenv==1.0.0
 googlemaps
+google-generativeai
+altair
+snowflake-connector-python
+distutils
+numpy
