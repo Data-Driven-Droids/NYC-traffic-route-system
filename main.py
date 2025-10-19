@@ -1,6 +1,9 @@
 import subprocess
 import os
 
+# Get the PORT from the environment, defaulting to 8080
+port = os.environ.get("PORT", "8080")
+
 # Get the directory of the current script (main.py)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -12,9 +15,20 @@ if not os.path.exists(home_py_path):
     print(f"Error: Could not find {home_py_path}")
     print("Please make sure Home.py is in the same directory as main.py.")
 else:
-    print(f"Launching Streamlit app from: {home_py_path}")
-    # The command to execute
-    command = ["streamlit", "run", home_py_path]
+    print(f"Launching Streamlit app from: {home_py_path} on port {port}")
+    
+    # The command to execute, now with port and server args
+    command = [
+        "streamlit", 
+        "run", 
+        home_py_path, 
+        "--server.port", 
+        port,
+        "--server.enableCORS", 
+        "false",
+        "--server.enableXsrfProtection",
+        "false"
+    ]
 
     # Run the command
     try:
