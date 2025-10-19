@@ -31,6 +31,8 @@ def load_all_data():
 
     # Force incidents (raw view still okay)
     df_use_of_force = get_city_guard_data_by_view("USE_OF_FORCE")
+    # Service calls (for map) - fetch and trim client-side to recent 10k
+    df_service_calls = get_city_guard_data_by_view("SERVICE_CALLS")
     
     processed_data = {
         "dispatch": {},
@@ -182,6 +184,29 @@ def load_all_data():
             .reset_index(name='Percentage')
         )
 
+    # --- Prepare data for Dispatch Map ---
+    if df_service_calls is not None and not df_service_calls.empty:
+        df_sc = df_service_calls.copy()
+        df_sc.columns = [c.upper() for c in df_sc.columns]
+        # Ensure required columns
+        req_cols = ['LATITUDE','LONGITUDE','CIP_JOBS','TYP_DESC','RADIO_CODE','BORO_NM','CREATE_DATE','CAD_EVNT_ID']
+        missing = [c for c in req_cols if c not in df_sc.columns]
+        if not missing:
+            # Clean coordinates
+            df_sc = df_sc[pd.to_numeric(df_sc['LATITUDE'], errors='coerce').notna() & pd.to_numeric(df_sc['LONGITUDE'], errors='coerce').notna()]
+            df_sc['LATITUDE'] = df_sc['LATITUDE'].astype(float)
+            df_sc['LONGITUDE'] = df_sc['LONGITUDE'].astype(float)
+            df_sc = df_sc[(df_sc['LATITUDE'].between(40.3, 41.0)) & (df_sc['LONGITUDE'].between(-74.3, -73.5))]
+            # Sort recent and cap to 10k
+            try:
+                df_sc['CREATE_DATE_PARSED'] = pd.to_datetime(df_sc['CREATE_DATE'])
+            except Exception:
+                df_sc['CREATE_DATE_PARSED'] = pd.to_datetime(df_sc['CREATE_DATE'], errors='coerce')
+            df_sc = df_sc.sort_values('CREATE_DATE_PARSED', ascending=False).head(10000).reset_index(drop=True)
+            # Rename for pydeck
+            df_sc = df_sc.rename(columns={'LATITUDE':'lat','LONGITUDE':'lon','CIP_JOBS':'CIP','TYP_DESC':'TYPE','RADIO_CODE':'CODE','BORO_NM':'BOROUGH','CREATE_DATE':'CREATE_TS','CAD_EVNT_ID':'EVENT_ID'})
+            processed_data['dispatch']['df_calls_map'] = df_sc[['lat','lon','CIP','TYPE','CODE','BOROUGH','CREATE_TS','EVENT_ID']]
+
     return processed_data
 
 # --- Static Data for Tab 3: CompStat ---
@@ -207,6 +232,12 @@ df_final_display = df_final_display[df_final_display["CompStat Book"] != "Total"
 all_data = load_all_data()
 dispatch_data = all_data.get("dispatch", {})
 force_data = all_data.get("force", {})
+
+# Persist map data and view state in session
+if 'df_calls_map' not in st.session_state and dispatch_data.get('df_calls_map') is not None:
+    st.session_state['df_calls_map'] = dispatch_data.get('df_calls_map')
+if 'map_view' not in st.session_state:
+    st.session_state['map_view'] = { 'lat': 40.7128, 'lon': -74.0060, 'zoom': 9.5 }
 
 
 # ==============================================================================
@@ -253,22 +284,74 @@ def plot_cip_vs_non_cip(df):
         margin=dict(t=60, b=10, l=10, r=10),
         height=360
     )
-    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_dispatch_map(df, filter_choice: str):
+    if df is None or df.empty:
+        return st.warning("Service calls map data not available.")
+    df_map = df.copy()
+    if filter_choice == 'CIP':
+        df_map = df_map[df_map['CIP'].str.upper().isin(['CRITICAL','SERIOUS','NON CRITICAL'])]
+    elif filter_choice == 'Non CIP':
+        df_map = df_map[df_map['CIP'].str.upper() == 'NON CIP']
+    if df_map.empty:
+        return st.info("No calls to display for this filter.")
+    import pydeck as pdk
+    color_map = {
+        'CRITICAL': [239, 68, 68],      # red
+        'SERIOUS': [245, 158, 11],      # amber
+        'NON CRITICAL': [16, 185, 129], # emerald
+        'NON CIP': [99, 102, 241]       # indigo
+    }
+    def _get_color(row):
+        key = str(row.get('CIP','')).upper()
+        return color_map.get(key, [107,114,128])
+    df_map = df_map.assign(color=df_map.apply(_get_color, axis=1))
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=df_map,
+        get_position='[lon, lat]',
+        get_fill_color='color',
+        get_radius=45,
+        pickable=True,
+        opacity=0.6,
+    )
+    # Initialize view from session (persisted across reruns)
+    mv = st.session_state.get('map_view', { 'lat': 40.7128, 'lon': -74.0060, 'zoom': 9.5 })
+    view_state = pdk.ViewState(latitude=mv.get('lat', 40.7128), longitude=mv.get('lon', -74.0060), zoom=mv.get('zoom', 9.5), min_zoom=8, max_zoom=16)
+    tooltip = {
+        "html": """
+            <div>
+              <b>Event:</b> {EVENT_ID}<br/>
+              <b>Created:</b> {CREATE_TS}<br/>
+              <b>Radio Code:</b> {CODE}<br/>
+              <b>Type:</b> {TYPE}<br/>
+              <b>Borough:</b> {BOROUGH}<br/>
+              <b>Call Class:</b> {CIP}
+            </div>
+        """,
+        "style": {"backgroundColor": "#111827", "color": "white"}
+    }
+    r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip, map_style=None)
+    st.pydeck_chart(r, use_container_width=True)
 
 def plot_cip_calls_by_type(df):
     if df is None or df.empty:
-        return st.warning("Call type data not available.")
-    df_sorted = df.sort_values('Calls', ascending=True).reset_index(drop=True)
-    fig_height = 360
+        return st.warning("CIP calls by type data not available.")
+    # Ensure required columns exist
+    if 'Category' not in df.columns or 'Calls' not in df.columns:
+        return st.warning("Type data missing expected columns.")
+    # Coerce Calls to numeric for sorting/labels
+    df_work = df.copy()
+    df_work['Calls'] = pd.to_numeric(df_work['Calls'], errors='coerce').fillna(0).astype(int)
+    df_sorted = df_work.sort_values('Calls', ascending=True).reset_index(drop=True)
     fig = px.bar(
         df_sorted, y='Category', x='Calls', orientation='h',
-        title='CIP Calls by Type', color_discrete_sequence=['#2563eb']
+        title='Calls by Type', color_discrete_sequence=['#2563eb']
     )
-    fig.update_traces(
-        text=df_sorted['Calls'].map(lambda v: f"{int(v):,}"), textposition='outside', cliponaxis=False
-    )
-    fig.update_layout(height=fig_height, margin=dict(l=10, r=10, t=60, b=10), xaxis=dict(showgrid=True, gridcolor='#eef2f7'), yaxis=dict(title=None))
-    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
+    fig.update_traces(text=df_sorted['Calls'].map(lambda v: f"{int(v):,}"), textposition='outside', cliponaxis=False)
+    fig.update_layout(height=360, margin=dict(l=10, r=10, t=60, b=10), xaxis=dict(showgrid=True, gridcolor='#eef2f7'), yaxis=dict(title=None), template='plotly_white')
+    st.plotly_chart(fig, config=PLOTLY_CONFIG)
 
 def plot_calls_by_borough(df):
     if df is None or df.empty:
@@ -471,6 +554,87 @@ with tab_dispatch:
     with col3:
         plot_calls_by_borough(borough_df)
 
+    # Interactive map row with side-by-side glossary
+    st.markdown("---")
+    c_map, c_gloss = st.columns([2, 1])
+    with c_map:
+        st.subheader("Service Calls Map (most recent 10,000)")
+        # Compact legend matching map colors
+        legend_css = """
+        <style>
+          .map-legend { display: grid; grid-template-columns: auto auto auto auto; gap: 10px 16px; align-items: center; margin: 6px 0 4px 0; }
+          .map-legend-item { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #374151; }
+          .map-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+          .dot-critical { background: rgb(239,68,68); }
+          .dot-serious { background: rgb(245,158,11); }
+          .dot-noncritical { background: rgb(16,185,129); }
+          .dot-noncip { background: rgb(99,102,241); }
+          @media (prefers-color-scheme: dark) {
+            .map-legend-item { color: #cbd5e1; }
+          }
+        </style>
+        """
+        legend_html = """
+        <div class="map-legend">
+          <div class="map-legend-item"><span class="map-dot dot-critical"></span><span>Critical</span></div>
+          <div class="map-legend-item"><span class="map-dot dot-serious"></span><span>Serious</span></div>
+          <div class="map-legend-item"><span class="map-dot dot-noncritical"></span><span>Non Critical</span></div>
+          <div class="map-legend-item"><span class="map-dot dot-noncip"></span><span>Non CIP</span></div>
+        </div>
+        """
+        st.markdown(legend_css + legend_html, unsafe_allow_html=True)
+        plot_dispatch_map(st.session_state.get("df_calls_map", dispatch_data.get("df_calls_map")), filter_choice)
+    with c_gloss:
+        st.subheader("Reference")
+        with st.expander("📘 Glossary: About Call Types", expanded=True):
+            glossary_css_inline = """
+            <style>
+              .glossary-card-inline { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; box-sizing: border-box; max-width: 100%; }
+              .glossary-card-inline h4 { margin: 0 0 8px 0; font-size: 1rem; color: #111827; }
+              .glossary-card-inline p, .glossary-card-inline ul { margin: 6px 0; color: #374151; }
+              .glossary-card-inline ul { padding-left: 18px; list-style-position: outside; overflow-wrap: anywhere; }
+              .glossary-card-inline li { margin: 4px 0; line-height: 1.35; }
+              .glossary-card-inline a { word-break: break-word; }
+              .legend { display: grid; grid-template-columns: 12px 1fr; align-items: start; row-gap: 6px; column-gap: 10px; margin: 10px 0 4px 0; }
+              .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-top: 0; }
+              .dot-critical { background: rgb(239,68,68); }
+              .dot-serious { background: rgb(245,158,11); }
+              .dot-noncritical { background: rgb(16,185,129); }
+              .dot-noncip { background: rgb(99,102,241); }
+              .glossary-footer-inline { margin-top: 8px; color: #6b7280; font-size: 0.85rem; }
+              @media (prefers-color-scheme: dark) {
+                .glossary-card-inline { background: #0b1220; border-color: #374151; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+                .glossary-card-inline h4 { color: #e5e7eb; }
+                .glossary-card-inline p, .glossary-card-inline ul { color: #cbd5e1; }
+                .glossary-footer-inline { color: #9ca3af; }
+              }
+            </style>
+            """
+            glossary_html_inline = """
+            <div class="glossary-card-inline">
+              <h4>About Call Types</h4>
+              <p>This dashboard classifies NYPD Calls for Service into two broad groups:</p>
+              <p><strong>Crime in Progress (CIP)</strong> calls include incidents flagged as:</p>
+              <div class="legend">
+                <span class="dot dot-critical"></span><span><strong>Critical</strong> – Immediate danger to life or property (e.g., shots fired, armed robbery)</span>
+                <span class="dot dot-serious"></span><span><strong>Serious</strong> – Significant public safety concerns (e.g., assault in progress, burglary)</span>
+                <span class="dot dot-noncritical"></span><span><strong>Non Critical</strong> – Lower-priority in-progress events (e.g., trespassing, disorderly group)</span>
+              </div>
+              <p><strong>NON CIP</strong> calls are routine or administrative in nature. These include:</p>
+              <ul>
+                <li>Noise complaints</li>
+                <li>Vehicle accidents</li>
+                <li>Welfare checks</li>
+                <li>Public assistance or non-urgent reports</li>
+              </ul>
+              <div class="glossary-footer-inline">
+                <div>Dashboard created by <strong>Brendan Lambert</strong></div>
+                <div>All data was obtained from <a href="https://data.cityofnewyork.us/Public-Safety/NYPD-Calls-for-Service-Year-to-Date-/n2zq-pubd/about_data" target="_blank">NYC Open Data – NYPD Calls for Service</a></div>
+              </div>
+            </div>
+            """
+            st.markdown(glossary_css_inline + glossary_html_inline, unsafe_allow_html=True)
+
 # ------------------------------------------------------------------------------
 # --- TAB 2: FORCE DASHBOARD (Live Data) ---
 # ------------------------------------------------------------------------------
@@ -656,53 +820,4 @@ with tab_emergency_contacts:
 # ------------------------------------------------------------------------------
 # --- GLOSSARY / ABOUT CALL TYPES ---
 # ------------------------------------------------------------------------------
-st.markdown("---")
-with st.expander("📘 Glossary: About Call Types", expanded=False):
-    glossary_css = """
-    <style>
-      .glossary-card {
-        border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; background: #ffffff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-      }
-      .glossary-card h3 { margin: 0 0 8px 0; font-size: 1.15rem; color: #111827; }
-      .glossary-card h4 { margin: 16px 0 6px 0; font-size: 1rem; color: #1f2937; }
-      .glossary-card p { margin: 0 0 8px 0; color: #374151; }
-      .glossary-card ul { margin: 6px 0 10px 18px; color: #374151; }
-      .glossary-card li { margin: 4px 0; }
-      .glossary-footer { margin-top: 10px; color: #6b7280; font-size: 0.9rem; }
-      @media (prefers-color-scheme: dark) {
-        .glossary-card { background: #0b1220; border-color: #374151; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-        .glossary-card h3 { color: #e5e7eb; }
-        .glossary-card h4 { color: #e5e7eb; }
-        .glossary-card p, .glossary-card ul { color: #cbd5e1; }
-        .glossary-footer { color: #9ca3af; }
-      }
-    </style>
-    """
-
-    glossary_html = """
-    <div class="glossary-card">
-      <h3>About Call Types</h3>
-      <p>This dashboard classifies NYPD Calls for Service into two broad groups:</p>
-      <h4>Crime in Progress (CIP)</h4>
-      <ul>
-        <li><strong>Critical</strong> – Immediate danger to life or property (e.g., shots fired, armed robbery)</li>
-        <li><strong>Serious</strong> – Significant public safety concerns (e.g., assault in progress, burglary)</li>
-        <li><strong>Non Critical</strong> – Lower-priority in-progress events (e.g., trespassing, disorderly group)</li>
-      </ul>
-      <h4>NON CIP</h4>
-      <p>Routine or administrative in nature, including:</p>
-      <ul>
-        <li>Noise complaints</li>
-        <li>Vehicle accidents</li>
-        <li>Welfare checks</li>
-        <li>Public assistance or non-urgent reports</li>
-      </ul>
-      <div class="glossary-footer">
-        <div>Dashboard created by <strong>Brendan Lambert</strong></div>
-        <div>Data source: <a href="https://data.cityofnewyork.us/Public-Safety/NYPD-Calls-for-Service-Year-to-Date-/n2zq-pubd/about_data" target="_blank">NYC Open Data – NYPD Calls for Service</a></div>
-      </div>
-    </div>
-    """
-
-    st.markdown(glossary_css + glossary_html, unsafe_allow_html=True)
+ 
