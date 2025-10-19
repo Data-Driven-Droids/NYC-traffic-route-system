@@ -1,6 +1,6 @@
 import snowflake.connector
 import pandas as pd
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import os
 from dotenv import load_dotenv
 import requests
@@ -10,6 +10,7 @@ from config.settings import Config
 import json as json
 from google import genai
 from google.genai import types
+import asyncio
 
 load_dotenv() 
 
@@ -569,6 +570,10 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
 
 CITY_GUARD_VIEWS: Dict[str, str] = {
     "SERVICE_CALLS": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS",
+    "SERVICE_CALLS_CIP_BREAKDOWN": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS_CIP_BREAKDOWN",
+    "SERVICE_CALLS_BY_TYPE": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS_BY_TYPE",
+    "SERVICE_CALLS_BY_BOROUGH": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS_BY_BOROUGH",
+    "SERVICE_CALLS_TOTALS": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_SERVICE_CALLS_TOTALS",
     "USE_OF_FORCE": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYPD_USE_OF_FORCE_INCIDENTS",
     "NYC_CRIMES": "DEV_PREMIER_LEAGUE.CITY_GUARD.VW_NYC_CRIMES"
 }
@@ -780,3 +785,67 @@ async def stream_gemini_response(
 
     except Exception as e:
         yield f"Error streaming Gemini response: {e}"
+
+
+# --- Emergency Contacts via Gemini ---
+async def get_emergency_contacts_async() -> Optional[List[Dict[str, str]]]:
+    """
+    Calls Gemini to fetch an up-to-date list of emergency contacts for NYC.
+    Returns a list of dicts with keys: service, phone, fax.
+    """
+    load_dotenv()
+
+    prompt = (
+        "Provide an up-to-date list of emergency contact services for New York City, "
+        "including top-tier emergency, city services, utilities, animal poison control, hotlines. "
+        "Return STRICT JSON ONLY as an array of objects with keys: service, phone, fax. "
+        "If fax is not applicable, put 'N/A - Voice call required'."
+    )
+
+    full_response = ""
+    try:
+        async for chunk in stream_gemini_response(prompt=prompt, history=[]):
+            if chunk.startswith("Error:"):
+                print(chunk)
+                return None
+            full_response += chunk
+
+        response_text = full_response.strip().replace("```json", "").replace("```", "").strip()
+        if not response_text:
+            return None
+
+        data = json.loads(response_text)
+        if isinstance(data, list):
+            # Normalize keys and ensure expected fields
+            normalized = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                service = item.get("service") or item.get("Service") or "Service"
+                phone = item.get("phone") or item.get("Phone") or "N/A"
+                fax = item.get("fax") or item.get("Fax") or "N/A - Voice call required"
+                normalized.append({"service": service, "phone": phone, "fax": fax})
+            return normalized if normalized else None
+        return None
+    except Exception as e:
+        print(f"Error parsing emergency contacts: {e}")
+        return None
+
+
+def get_emergency_contacts() -> Optional[List[Dict[str, str]]]:
+    """
+    Synchronous wrapper for get_emergency_contacts_async to be used in Streamlit.
+    """
+    try:
+        return asyncio.run(get_emergency_contacts_async())
+    except RuntimeError:
+        # If already in an event loop, fall back to creating a new loop
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(get_emergency_contacts_async())
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
