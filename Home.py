@@ -23,7 +23,7 @@ st.set_page_config(
 )
 
 # ====================================================================================================
-# --- Data Fetching and Caching ---
+# --- Data Fetching Function Definition ---
 # ====================================================================================================
 
 @st.cache_data(ttl=86400) # Cache for 24 hours
@@ -36,90 +36,14 @@ def load_demographics_data():
         st.error(f"Error running async demographic fetch: {e}")
         return None
 
-# Load the demographic data
-demographics_data = load_demographics_data()
-
-# Extract values with a fallback if the API call fails
-if demographics_data:
-    nyc_population = demographics_data.get('population', 'N/A')
-    nyc_birth_rate = demographics_data.get('birth_rate', 'N/A')
-else:
-    nyc_population = "Data Unavailable"
-    nyc_birth_rate = "Data Unavailable"
-    st.warning("Could not fetch live NYC demographic data from Gemini.")
-
 # ====================================================================================================
-# --- ABOUT NEW YORK CITY SECTION (Unchanged) ---
+# --- Custom CSS (Consolidated) ---
 # ====================================================================================================
 
-st.title("🗽 New York City: The Crossroads of the World")
-
-st.markdown("""
-New York City, affectionately known as "The Big Apple," is the most populous and influential metropolis in the United States. Situated at the mouth of the Hudson River on one of the world's largest natural harbors, NYC is a **global center for finance, media, art, fashion, technology, and international diplomacy**. It is often described as the cultural capital of the world, with a dynamism fueled by its incredible diversity.
-
-### The Five Boroughs
-The city is geographically composed of five distinct boroughs, each of which is a county of New York State, consolidated into a single entity in 1898:
-* **Manhattan** (New York County): The commercial, financial, and cultural heart.
-* **Brooklyn** (Kings County): The most populous borough, celebrated for its artistic flair.
-* **Queens** (Queens County): The most ethnically diverse urban area in the world.
-* **The Bronx** (Bronx County): The birthplace of hip-hop and salsa music.
-* **Staten Island** (Richmond County): Offers a quieter, more suburban environment.
-
-### A Beacon of Global Influence
-New York's position as a global city is undisputed. It hosts the headquarters of the **United Nations**, and its two largest stock exchanges, the **New York Stock Exchange (NYSE)** and **NASDAQ**, anchor the world's financial markets.
-
-The city's reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet. This rich tapestry of cultures makes every neighborhood a unique experience.
-
-Despite its constant rush, New York offers extensive green retreats, most famously the 843 acres of **Central Park**. The city’s robust 24/7 public transit system, the New York City Subway, allows millions to navigate this dense urban environment.
-""")
-
-st.markdown("---")
-
-# --- Region Selection Dropdown ---
-selected_region = st.selectbox(
-    "Select a Borough in NYC:",
-    options=list(NYC_REGIONS.keys()),
-    index=0 
-)
-
-coords = NYC_REGIONS[selected_region]
-latitude = coords['latitude']
-longitude = coords['longitude']
-
-
-# --- Fetch Weather Data ---
-weather_data = get_weather_data_nyc(latitude=latitude, longitude=longitude)
-if weather_data is None:
-    st.error("Could not fetch weather data.")
-    st.stop()
-
-current = weather_data['current']
-hourly_df = weather_data['hourly_df']
-daily_df = weather_data['daily_df']
-
-# Prepare weather variables
-current_temp = str(current['temp']).replace('°C', '').strip() 
-current_wind = current['wind']
-current_time_gmt = current['time']
-current_status = current['status']
-status_icon = "https://cdn-icons-png.flaticon.com/128/869/869869.png" if current_status == "Clear" else "https://cdn-icons-png.flaticon.com/128/3353/3353748.png"
-
-# --- Fetch Air Quality Data ---
-aqi_data = get_air_quality_data_nyc(latitude=latitude, longitude=longitude)
-if aqi_data is None:
-    current_aqi_value, current_aqi_category, dominant_pollutant, pm25_value, pm10_value = "N/A", "Unavailable", "N/A", "N/A", "N/A"
-else:
-    current_aqi_value = aqi_data.get('aqi', 'N/A')
-    current_aqi_category = aqi_data.get('category', 'N/A')
-    dominant_pollutant = aqi_data.get('pollutant', 'N/A').upper() 
-    pm25_value = aqi_data.get('pm25', 'N/A').split(' ')[0]
-    pm10_value = aqi_data.get('pm10', 'N/A').split(' ')[0]
-
-# --- Custom CSS (Unchanged) ---
-# ... (Your custom_css string remains here) ...
+# --- Custom CSS for Metrics Cards ---
 custom_css = """
 <style>
-    /* Example: Add some breathing room for the cards */
+    /* ... (Your existing .weather-card, .metric-icon, etc. CSS) ... */
     .st-emotion-cache-1e5imcs {
         gap: 1rem;
     }
@@ -183,49 +107,244 @@ custom_css = """
             transform: scale(1.1);
         }
     }
+
+    /* --- Custom CSS for News Ticker --- */
+    .news-container {
+        background-color: #f8f9fa;
+        border-radius: 12px;
+        padding: 10px 20px;
+        height: 120px;
+        overflow: hidden;
+        position: relative;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .news-live-indicator {
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.85em;
+        color: #10b981;
+        font-weight: 600;
+        z-index: 10;
+        background: rgba(248, 249, 250, 0.9);
+        padding: 4px 8px;
+        border-radius: 12px;
+    }
+    .news-scroll {
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Center horizontally */
+        position: absolute;
+        width: 100%;
+        animation: scrollUp 30s linear infinite;
+    }
+    .headline-item {
+        font-size: 1.05em;
+        font-weight: 500;
+        color: #222;
+        text-align: center; /* Center the text */
+        padding: 6px 0;
+    }
+    /* Vertical scroll animation */
+    @keyframes scrollUp {
+        0%   { top: 100%; }
+        100% { top: -100%; }
+    }
 </style>
-""" # Placeholder for brevity
+"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
+
+# ====================================================================================================
+# --- STATIC UI & PLACEHOLDER SETUP ---
+# ====================================================================================================
+
+# --- Sidebar ---
 st.sidebar.title("New York City 360 Dashboard")
 
-# --- Main Page Title ---
+# --- Static "About" Section ---
+st.title("City Scope 360 Dashboard")
+st.markdown("""This is just a prototype for New York City.""")
+
+st.title("🗽 New York City: The Crossroads of the World")
+st.markdown("""
+New York City, affectionately known as "The Big Apple," is the most populous and influential metropolis in the United States. Situated at the mouth of the Hudson River on one of the world's largest natural harbors, NYC is a **global center for finance, media, art, fashion, technology, and international diplomacy**. It is often described as the cultural capital of the world, with a dynamism fueled by its incredible diversity.
+
+### The Five Boroughs
+The city is geographically composed of five distinct boroughs, each of which is a county of New York State, consolidated into a single entity in 1898:
+* **Manhattan** (New York County): The commercial, financial, and cultural heart.
+* **Brooklyn** (Kings County): The most populous borough, celebrated for its artistic flair.
+* **Queens** (Queens County): The most ethnically diverse urban area in the world.
+* **The Bronx** (Bronx County): The birthplace of hip-hop and salsa music.
+* **Staten Island** (Richmond County): Offers a quieter, more suburban environment.
+
+### A Beacon of Global Influence
+New York's position as a global city is undisputed. It hosts the headquarters of the **United Nations**, and its two largest stock exchanges, the **New York Stock Exchange (NYSE)** and **NASDAQ**, anchor the world's financial markets.
+
+The city's reputation as a **gateway for legal immigration** has led to it being the most linguistically diverse city on the planet. This rich tapestry of cultures makes every neighborhood a unique experience.
+
+Despite its constant rush, New York offers extensive green retreats, most famously the 843 acres of **Central Park**. The city’s robust 24/7 public transit system, the New York City Subway, allows millions to navigate this dense urban environment.
+""")
+st.markdown("---")
+
+# --- Region Selection Dropdown ---
+selected_region = st.selectbox(
+    "Select a Borough in NYC:",
+    options=list(NYC_REGIONS.keys()),
+    index=0 
+)
+
+coords = NYC_REGIONS[selected_region]
+latitude = coords['latitude']
+longitude = coords['longitude']
+
+# --- Main Page Title (Dynamic) ---
 st.title(f"Current Status in {selected_region}") 
 st.subheader("Live Weather, Air Quality & Demographics Overview")
 
-# ====================================================================================================
-# --- Row 1: Top Cards (MODIFIED to 6 COLUMNS) ---
-# ====================================================================================================
+# --- Define Placeholders ---
+# This is the key change: create the layout and placeholders *before* fetching data.
+loading_card_html = """<div class="weather-card" style="justify-content: center; align-items: center; font-weight: 500; color: #555;">Loading...</div>"""
 
+# Row 1: Top Cards
 c1, c2, c3, c4, c5, c6 = st.columns(6) 
+ph_c1 = c1.markdown(loading_card_html, unsafe_allow_html=True)
+ph_c2 = c2.markdown(loading_card_html, unsafe_allow_html=True)
+ph_c3 = c3.markdown(loading_card_html, unsafe_allow_html=True)
+ph_c4 = c4.markdown(loading_card_html, unsafe_allow_html=True)
+ph_c5 = c5.markdown(loading_card_html, unsafe_allow_html=True)
+ph_c6 = c6.markdown(loading_card_html, unsafe_allow_html=True)
 
-with c1:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="{status_icon}" class="metric-icon"><br><b style="font-size:1.1em;">{current_status}</b>
-        <div style="font-size:0.9em; margin-top:4px;">Now</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
-with c2:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/1163/1163661.png" class="metric-icon"><br><b style="font-size:1em;">{current_time_gmt}</b>
-        <div style="font-size:0.9em; margin-top:4px;">Time (GMT)</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
-with c3:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/4150/4150897.png" class="metric-icon"><br><b style="font-size:1em;">{current_wind}</b>
-        <div style="font-size:0.9em; margin-top:4px;">Wind</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
-with c4:
+# Row 2: News Ticker
+st.markdown("---")
+st.subheader(f"📰 Latest Headlines in {selected_region}")
+ph_news = st.empty()
+ph_news.info("Fetching latest headlines...")
+
+# Row 3: Map
+st.markdown("---")
+st.subheader(f"📍 Map Location: {selected_region}")
+ph_map = st.empty()
+ph_map.info("Loading map...")
+
+# Row 4: Temperature Cards
+st.markdown("---")
+col1, col2 = st.columns(2)
+ph_temp1 = col1.markdown(loading_card_html, unsafe_allow_html=True)
+ph_temp2 = col2.markdown(loading_card_html, unsafe_allow_html=True)
+
+# Row 5: Hourly Chart
+st.markdown("---")
+st.subheader("Hourly Weather (Next 24 Hours)")
+ph_chart = st.empty()
+ph_chart.info("Loading hourly data...")
+
+# Row 6: Forecast Table
+st.markdown("---")
+st.subheader("7-Day Forecast")
+ph_table = st.empty()
+ph_table.info("Loading 7-day forecast...")
+
+
+# ====================================================================================================
+# --- DATA FETCHING & PROCESSING ---
+# (This section runs *after* placeholders are on screen)
+# ====================================================================================================
+
+# --- Fetch Demographics Data ---
+demographics_data = load_demographics_data()
+if demographics_data:
+    nyc_population = demographics_data.get('population', 'N/A')
+    nyc_birth_rate = demographics_data.get('birth_rate', 'N/A')
+else:
+    nyc_population = "Data Unavailable"
+    nyc_birth_rate = "Data Unavailable"
+    st.warning("Could not fetch live NYC demographic data from Gemini.")
+
+# --- Fetch Weather Data ---
+weather_data = get_weather_data_nyc(latitude=latitude, longitude=longitude)
+if weather_data is None:
+    st.error("Could not fetch weather data. Dashboard cannot continue.")
+    # Clear placeholders to show error
+    ph_c1.empty()
+    ph_c2.empty()
+    ph_c3.empty()
+    ph_temp1.empty()
+    ph_temp2.empty()
+    ph_chart.empty()
+    ph_table.empty()
+    c1.error("Weather data failed")
+    st.stop() # Stop execution if weather fails, as it's critical
+
+# Process weather data
+current = weather_data['current']
+hourly_df = weather_data['hourly_df']
+daily_df = weather_data['daily_df']
+current_temp = str(current['temp']).replace('°C', '').strip() 
+current_wind = current['wind']
+current_time_gmt = current['time']
+current_status = current['status']
+status_icon = "https://cdn-icons-png.flaticon.com/128/869/869869.png" if current_status == "Clear" else "https://cdn-icons-png.flaticon.com/128/3353/3353748.png"
+
+# --- Fetch Air Quality Data ---
+aqi_data = get_air_quality_data_nyc(latitude=latitude, longitude=longitude)
+if aqi_data is None:
+    current_aqi_value, current_aqi_category, dominant_pollutant, pm25_value, pm10_value = "N/A", "Unavailable", "N/A", "N/A", "N/A"
+    ph_c4.warning("AQI data unavailable")
+else:
+    current_aqi_value = aqi_data.get('aqi', 'N/A')
+    current_aqi_category = aqi_data.get('category', 'N/A')
+    dominant_pollutant = aqi_data.get('pollutant', 'N/A').upper() 
+    pm25_value = aqi_data.get('pm25', 'N/A').split(' ')[0]
+    pm10_value = aqi_data.get('pm10', 'N/A').split(' ')[0]
+
+# --- Fetch News Data ---
+try:
+    headlines_list = get_news_headlines(region=selected_region)
+    if isinstance(headlines_list, str):
+        headlines_list = [h.strip() for h in headlines_list.split("•") if h.strip()]
+    if not headlines_list:
+        headlines_list = ["No recent headlines found."]
+except Exception as e:
+    headlines_list = [f"Could not fetch news headlines: {e}"]
+headlines_html = "".join([f"<div class='headline-item'>• {h}</div>" for h in headlines_list])
+
+
+# ====================================================================================================
+# --- FILL PLACEHOLDERS WITH DATA ---
+# ====================================================================================================
+
+# --- Row 1: Top Cards (Filling) ---
+ph_c1.markdown(f"""
+<div class="weather-card card-title">
+    <img src="{status_icon}" class="metric-icon"><br><b style="font-size:1.1em;">{current_status}</b>
+    <div style="font-size:0.9em; margin-top:4px;">Now</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
+
+ph_c2.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/1163/1163661.png" class="metric-icon"><br><b style="font-size:1em;">{current_time_gmt}</b>
+    <div style="font-size:0.9em; margin-top:4px;">Time (GMT)</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
+
+ph_c3.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/4150/4150897.png" class="metric-icon"><br><b style="font-size:1em;">{current_wind}</b>
+    <div style="font-size:0.9em; margin-top:4px;">Wind</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
+
+if aqi_data is not None:
     aqi_icon = "https://cdn-icons-png.flaticon.com/128/3303/3303867.png" 
-    st.markdown(f"""
+    ph_c4.markdown(f"""
     <div class="weather-card card-title">
         <img src="{aqi_icon}" class="metric-icon">
         <div class="aqi-detail">AQI: {current_aqi_value}<br/>Pollutant: {dominant_pollutant}</div>
@@ -235,109 +354,26 @@ with c4:
     </div>
     """, unsafe_allow_html=True)
 
-# --- MODIFICATION: New Population Card ---
-with c5:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/921/921346.png" class="metric-icon">
-        <br><b style="font-size:1em;">{nyc_population}</b>
-        <div style="font-size:0.9em; margin-top:4px;">Population</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
+ph_c5.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/921/921346.png" class="metric-icon">
+    <br><b style="font-size:1em;">{nyc_population}</b>
+    <div style="font-size:0.9em; margin-top:4px;">Population</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
 
-# --- MODIFICATION: New Birth Rate Card ---
-with c6:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/3353/3353491.png" class="metric-icon">
-        <br><b style="font-size:1em;">{nyc_birth_rate}</b>
-        <div style="font-size:0.9em; margin-top:4px;">Birth Rate</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
+ph_c6.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/3353/3353491.png" class="metric-icon">
+    <br><b style="font-size:1em;">{nyc_birth_rate}</b>
+    <div style="font-size:0.9em; margin-top:4px;">Birth Rate</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
 
-# ====================================================================================================
-# --- NEWS TICKER SECTION ---
-# ====================================================================================================
-
-st.markdown("---")
-st.subheader(f"📰 Latest Headlines in {selected_region}")
-
-# 1. Fetch news data
-news_headlines = None
-try:
-    headlines_list = get_news_headlines(region=selected_region)
-    if isinstance(headlines_list, str):
-        # Split if returned as a single string
-        headlines_list = [h.strip() for h in headlines_list.split("•") if h.strip()]
-    if not headlines_list:
-        headlines_list = ["No recent headlines found."]
-except Exception as e:
-    headlines_list = [f"Could not fetch news headlines: {e}"]
-    st.warning("Ensure 'requests' is installed and your NewsAPI key is set in Config.")
-
-# Convert to HTML for vertical scrolling
-headlines_html = "".join([f"<div class='headline-item'>• {h}</div>" for h in headlines_list])
-
-# Custom CSS with centered text
-vertical_scroll_css = """
-<style>
-.news-container {
-    background-color: #f8f9fa;
-    border-radius: 12px;
-    padding: 10px 20px;
-    height: 120px;
-    overflow: hidden;
-    position: relative;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.news-live-indicator {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.85em;
-    color: #10b981;
-    font-weight: 600;
-    z-index: 10;
-    background: rgba(248, 249, 250, 0.9);
-    padding: 4px 8px;
-    border-radius: 12px;
-}
-
-.news-scroll {
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* Center horizontally */
-    position: absolute;
-    width: 100%;
-    animation: scrollUp 30s linear infinite;
-}
-
-.headline-item {
-    font-size: 1.05em;
-    font-weight: 500;
-    color: #222;
-    text-align: center; /* Center the text */
-    padding: 6px 0;
-}
-
-/* Vertical scroll animation */
-@keyframes scrollUp {
-    0%   { top: 100%; }
-    100% { top: -100%; }
-}
-</style>
-"""
-
-st.markdown(vertical_scroll_css, unsafe_allow_html=True)
-
-# Render the vertical ticker with live indicator
-st.markdown(f"""
+# --- Row 2: News Ticker (Filling) ---
+ph_news.markdown(f"""
 <div class="news-container">
     <div class="news-live-indicator"><span class="live-dot"></span>Live</div>
     <div class="news-scroll">
@@ -346,103 +382,68 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ====================================================================================================
-# --- Row 2: Google Map (FULL WIDTH) ---
-# ====================================================================================================
-
-st.markdown("---")
-st.subheader(f"📍 Map Location: {selected_region}")
-
-# Use a single column container for the full-width map
-c_map = st.container()
-
-# Get the city name for the map query
+# --- Row 3: Map (Filling) ---
 map_query = selected_region if selected_region == "New York City (General)" else selected_region + ", New York"
-map_query = map_query.replace(' ', '+') # Format for URL
+map_query = map_query.replace(' ', '+')
 
 try:
-    api_key = Config.GOOGLE_MAPS_API_KEY # Access the key
+    api_key = Config.GOOGLE_MAPS_API_KEY
 except (NameError, AttributeError, KeyError):
-    api_key = "YOUR_API_KEY_PLACEHOLDER" # Fallback if Config isn't properly defined
+    api_key = "YOUR_API_KEY_PLACEHOLDER"
     st.warning("Google Maps API key not found in Config. Displaying placeholder.")
 
-with c_map:
-    # --- MODIFICATION: Corrected the Google Maps Embed URL ---
-    st.markdown(f"""
-    <div style="border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px #20204033;">
-        <iframe
-            width="100%"
-            height="350"
-            style="border:0"
-            loading="lazy"
-            allowfullscreen
-            referrerpolicy="no-referrer-when-downgrade"
-            src="https://www.google.com/maps/embed/v1/place?key={api_key}&q={map_query}&center={latitude},{longitude}&zoom=11">
-        </iframe>
-    </div>
-    """, unsafe_allow_html=True)
+ph_map.markdown(f"""
+<div style="border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px #20204033;">
+    <iframe
+        width="100%"
+        height="350"
+        style="border:0"
+        loading="lazy"
+        allowfullscreen
+        referrerpolicy="no-referrer-when-downgrade"
+        src="https://www.google.com/maps/embed/v1/place?key={api_key}&q={map_query}&center={latitude},{longitude}&zoom=11">
+    </iframe>
+</div>
+""", unsafe_allow_html=True)
 
-# ====================================================================================================
-# --- Row 3: Temperature Cards (Below the map) ---
-# ====================================================================================================
+# --- Row 4: Temperature Cards (Filling) ---
+ph_temp1.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/3731/3731872.png" class="metric-icon">
+    <br><b style="font-size:1.3em;">{current_temp}°C</b>
+    <div style="font-size:0.95em; margin-top:4px;">Current Temperature</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
 
-st.markdown("---") # Separator after the map
-col1, col2 = st.columns(2)
-
-# Current Temperature Card
-with col1:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/3731/3731872.png" class="metric-icon">
-        <br><b style="font-size:1.3em;">{current_temp}°C</b>
-        <div style="font-size:0.95em; margin-top:4px;">Current Temperature</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Daily Max Temperature Card
 if not daily_df.empty and 'Today' in daily_df['Date'].values:
-    # Use .iloc[0] to get the value from the filtered Series
     max_temp_today = daily_df.loc[daily_df['Date'] == 'Today', 'Max Temp'].iloc[0]
 else:
     max_temp_today = "N/A"
     
-with col2:
-    st.markdown(f"""
-    <div class="weather-card card-title">
-        <img src="https://cdn-icons-png.flaticon.com/128/869/869869.png" class="metric-icon">
-        <br><b style="font-size:1.3em;">{max_temp_today}</b>
-        <div style="font-size:0.95em; margin-top:4px;">Daily Max Temp</div>
-        <div class="live-indicator"><span class="live-dot"></span>Live</div>
-    </div>
-    """, unsafe_allow_html=True)
+ph_temp2.markdown(f"""
+<div class="weather-card card-title">
+    <img src="https://cdn-icons-png.flaticon.com/128/869/869869.png" class="metric-icon">
+    <br><b style="font-size:1.3em;">{max_temp_today}</b>
+    <div style="font-size:0.95em; margin-top:4px;">Daily Max Temp</div>
+    <div class="live-indicator"><span class="live-dot"></span>Live</div>
+</div>
+""", unsafe_allow_html=True)
 
-# ====================================================================================================
-# --- Charts and Tables ---
-# ====================================================================================================
-
-# --- Line Chart for Hourly Data (FIXED FOR ROBUSTNESS) ---
-st.markdown("---")
-st.subheader("Hourly Weather (Next 24 Hours)")
-
-# Robust check for the time column name (Time vs time)
-# Assuming the column is 'Time' based on previous context, but checking just in case
+# --- Row 5: Hourly Chart (Filling) ---
 time_col = 'Time'
 if time_col not in hourly_df.columns:
-    # Check for lowercase 'time' as a common error
     if 'time' in hourly_df.columns:
         time_col = 'time'
     else:
-        st.error("Cannot display hourly chart: Missing 'Time' or 'time' column in hourly data.")
-        time_col = None # Prevent the chart from trying to run
+        ph_chart.error("Cannot display hourly chart: Missing 'Time' or 'time' column in hourly data.")
+        time_col = None
 
 if time_col:
     try:
-        st.line_chart(hourly_df.set_index(time_col)[['Temperature', 'Humidity']])
+        ph_chart.line_chart(hourly_df.set_index(time_col)[['Temperature', 'Humidity']])
     except KeyError:
-        st.error("Error generating line chart. Check if 'Temperature' and 'Humidity' columns exist.")
+        ph_chart.error("Error generating line chart. Check if 'Temperature' and 'Humidity' columns exist.")
 
-# --- Forecast Table ---
-st.markdown("---")
-st.subheader("7-Day Forecast")
-st.table(daily_df.rename(columns={'Max UV Index': 'Max UV'}))
+# --- Row 6: Forecast Table (Filling) ---
+ph_table.table(daily_df.rename(columns={'Max UV Index': 'Max UV'}))

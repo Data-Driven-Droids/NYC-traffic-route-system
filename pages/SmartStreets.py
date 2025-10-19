@@ -316,7 +316,10 @@ def main():
         }
     </style>
     """, unsafe_allow_html=True)
-
+    
+    st.title("City Scope 360 Dashboard")
+    st.markdown("""This is just a prototype for New York City.""")
+    
     st.markdown("""
     <div class="main-header">
         <h1 style="margin: 0; font-size: 2.5rem; font-weight: 800;">🚦 NYC Traffic Congestion Dashboard</h1>

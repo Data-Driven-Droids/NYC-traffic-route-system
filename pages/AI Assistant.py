@@ -1,8 +1,5 @@
 import streamlit as st
-from utils import stream_gemini_response  # Async Gemini utility
-
-# --- Page Configuration ---
-# This must be the first Streamlit command in your script
+from utils import stream_gemini_response
 st.set_page_config(
     page_title="NYC City 360",
     page_icon="✨",
@@ -188,10 +185,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.title("City Scope 360 Dashboard")
+st.markdown("""This is just a prototype for New York City.""")
 
 # --- Decorative Header with Icons ---
 st.markdown("""<div class="ai-header"><h1><span class="ai-icon-pulse">🤖</span> NYC City 360 AI Assistant <span class="ai-icon-pulse">✨</span></h1><p>Your intelligent companion for navigating the five boroughs. Powered by Google Gemini for instant, real-time insights about New York City.</p><div class="feature-icons"><div class="feature-item"><div class="feature-icon">🌤️</div><div class="feature-label">Weather</div></div><div class="feature-item"><div class="feature-icon">🚦</div><div class="feature-label">Traffic</div></div><div class="feature-item"><div class="feature-icon">🏙️</div><div class="feature-label">City Info</div></div><div class="feature-item"><div class="feature-icon">🚨</div><div class="feature-label">Safety</div></div><div class="feature-item"><div class="feature-icon">🗺️</div><div class="feature-label">Navigation</div></div></div></div>""", unsafe_allow_html=True)
 
+# --- Sidebar Content ---
 st.sidebar.markdown("""### 🗽 NYC 360 AI Assistant
 
 **What I can help with:**
@@ -203,18 +203,27 @@ st.sidebar.markdown("""### 🗽 NYC 360 AI Assistant
 
 **Powered by:**
 - ⚡ Google Gemini AI
+- ❄️ Snowflake Cortex Agents
 - 🔄 Real-time data streams
 - 🎯 NYC-focused responses only
 """)
 
+# --- Initial Welcome Message ---
+initial_message = {
+    "role": "assistant",
+    "content": "👋 **Hello! I'm your NYC City 360 AI Assistant.**\n\nI'm here to help you navigate the five boroughs with real-time information. You can ask me about:\n\n🌤️ **Weather** - Current conditions, forecasts, and alerts\n🚦 **Traffic** - Live congestion, incidents, and route planning\n🏙️ **City Information** - Neighborhoods, attractions, and local insights\n🚨 **Safety** - Emergency alerts and public safety updates\n🗺️ **Navigation** - Directions and transportation options\n\nWhat would you like to know about NYC today?"
+}
+
+# --- Add Reset Button Logic to Sidebar ---
+if st.sidebar.button("🔄 Reset Chat", use_container_width=True):
+    # Clear the chat history by re-initializing it
+    st.session_state.messages = [initial_message]
+    # Rerun the app to reflect the cleared state immediately
+    st.rerun()
+
 # --- Initialize session state ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": "👋 **Hello! I'm your NYC City 360 AI Assistant.**\n\nI'm here to help you navigate the five boroughs with real-time information. You can ask me about:\n\n🌤️ **Weather** - Current conditions, forecasts, and alerts\n🚦 **Traffic** - Live congestion, incidents, and route planning\n🏙️ **City Information** - Neighborhoods, attractions, and local insights\n🚨 **Safety** - Emergency alerts and public safety updates\n🗺️ **Navigation** - Directions and transportation options\n\nWhat would you like to know about NYC today?"
-        }
-    ]
+    st.session_state.messages = [initial_message]
 
 # --- Display chat history ---
 for message in st.session_state.messages:
@@ -234,7 +243,7 @@ if prompt := st.chat_input("💬 Ask me anything about NYC - traffic, weather, s
     with st.chat_message("assistant", avatar="🤖"):
         # Use st.write_stream for a cleaner, more robust implementation
         # This works with both sync and async generators
-        full_response = st.write_stream(stream_gemini_response(prompt, st.session_state.messages))
+        full_response = st.write_stream(stream_gemini_response(prompt, st.session_state.messages, system_instruction='Only Answer Questions related to New York City and nearby areas.'))
 
     # 3. Add the complete assistant response to the session state
     st.session_state.messages.append({"role": "assistant", "content": full_response})

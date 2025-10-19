@@ -298,6 +298,8 @@ def plot_incident_line_chart(crime_name):
 # ==============================================================================
 #                     STREAMLIT APPLICATION LAYOUT
 # ==============================================================================
+st.title("City Scope 360 Dashboard")
+st.markdown("""This is just a prototype for New York City.""")
 
 st.title("NYPD Dashboards")
 

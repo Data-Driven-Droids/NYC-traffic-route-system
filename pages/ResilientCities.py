@@ -1,4 +1,3 @@
-# Save this file as app.py
 import streamlit as st
 import pandas as pd
 import re # For parsing location data
@@ -11,7 +10,7 @@ st.set_page_config(page_title="Resilient Cities Dashboard", layout="wide")
 
 
 # ==============================================================================
-#                       1. DATA LOADING & PROCESSING
+#                 1. DATA LOADING DEFINITION
 # ==============================================================================
 @st.cache_data(ttl=3600) # Cache data for 1 hour
 def load_data():
@@ -21,15 +20,13 @@ def load_data():
     requests_df = get_resilient_cities_data_by_view("311_REQUESTS")
     return emergency_df, projects_df, requests_df
 
-# Load all the data
-df_emergency, df_projects, df_311 = load_data()
-
-
 # ==============================================================================
-#                       2. HELPER FUNCTIONS FOR DISPLAY
+#                 2. HELPER FUNCTIONS FOR DISPLAY
 # ==============================================================================
 def display_emergency_table(title, data, headers):
     """Helper function to render a formatted table section for Tab 1."""
+    # This helper writes to the current 'st' context,
+    # so we'll call it inside a container.
     st.subheader(title)
     header_cols = st.columns(len(headers))
     for i, header in enumerate(headers):
@@ -52,12 +49,14 @@ def parse_geom(geom_str):
     return None, None
 
 # ==============================================================================
-#                       3. STREAMLIT APP LAYOUT
+#                 3. STATIC UI & PLACEHOLDER SETUP
 # ==============================================================================
+st.title("City Scope 360 Dashboard")
+st.markdown("""This is just a prototype for New York City.""")
 
 st.title("🏙️ NYC Resilient Cities Dashboard")
 
-# --- MODIFICATION: Added "About" section ---
+# --- "About" section ---
 with st.expander("ℹ️ About This Dashboard", expanded=False):
     st.markdown("""
     This dashboard provides a multi-faceted view of New York City's resilience and operational status, 
@@ -70,8 +69,6 @@ with st.expander("ℹ️ About This Dashboard", expanded=False):
     All data is fetched from Snowflake views and cached for one hour.
     """)
 st.markdown("---")
-# --- END MODIFICATION ---
-
 
 # Create the three tabs
 tab1, tab2, tab3 = st.tabs([
@@ -80,109 +77,157 @@ tab1, tab2, tab3 = st.tabs([
     "311 Service Requests"
 ])
 
-
-# ------------------------------------------------------------------------------
-# --- TAB 1: EMERGENCY RESPONSE METRICS ---
-# ------------------------------------------------------------------------------
+# --- Placeholders for TAB 1 ---
 with tab1:
     st.header("Weekly Emergency Response Times")
+    # A single placeholder for the whole tab's content
+    ph_tab1 = st.empty()
+    ph_tab1.info("Loading Emergency Response data from Snowflake...")
+
+# --- Placeholders for TAB 2 ---
+with tab2:
+    st.header("NYC Capital Projects Overview")
+    
+    # Placeholders for metrics
+    m1, m2 = st.columns(2)
+    ph_m1 = m1.empty()
+    ph_m2 = m2.empty()
+    ph_m1.info("Loading metrics...")
+    ph_m2.info("Loading metrics...")
+    st.markdown("---")
+
+    # Placeholder for map
+    st.subheader("Project Locations")
+    ph_map = st.empty()
+    ph_map.info("Loading project locations map...")
+
+# --- Placeholders for TAB 3 ---
+with tab3:
+    st.header("311 Service Requests Analysis")
+    
+    # Sidebar placeholder
+    st.sidebar.header("311 Filters")
+    ph_sidebar_filter = st.sidebar.empty()
+    ph_sidebar_filter.info("Loading filters...")
+
+    # Placeholders for KPIs
+    kpi1, kpi2 = st.columns(2)
+    ph_kpi1 = kpi1.empty()
+    ph_kpi2 = kpi2.empty()
+    ph_kpi1.info("Loading KPIs...")
+    ph_kpi2.info("Loading KPIs...")
+    st.markdown("---")
+
+    # Placeholder for chart
+    st.subheader("Top 5 Complaint Types")
+    ph_chart_311 = st.empty()
+    ph_chart_311.info("Loading chart data...")
+
+    # Placeholder for data table
+    with st.expander("View Filtered Data Table"):
+        ph_table_311 = st.empty()
+        ph_table_311.info("Loading data table...")
+
+
+# ==============================================================================
+#                 4. DATA FETCHING & PROCESSING
+# ==============================================================================
+
+# This is the main blocking call. It runs AFTER all placeholders are drawn.
+df_emergency, df_projects, df_311 = load_data()
+
+
+# ==============================================================================
+#                 5. POPULATE PLACEHOLDERS
+# ==============================================================================
+
+# --- Populate TAB 1 ---
+ph_tab1.empty() # Clear the "Loading..." message
+with ph_tab1.container(): # Use a container to write content into the cleared space
     if df_emergency is not None and not df_emergency.empty:
-        # Normalize column names to uppercase for consistency
         df_emergency.columns = [col.upper() for col in df_emergency.columns]
         
-        # Headers for the table display (excluding the grouping columns)
         headers = [
             "Final Incident Type", "# of Incidents", "First Pickup", "Calltaker Handoff", 
             "FDNY Pickup", "FDNY Job Creation", "EMS Pickup", "Agency Job Creation", 
             "Agency Dispatch", "Agency Arrival", "First Arrival (Multi-Agency)"
         ]
         
-        # Data columns that correspond to the headers
         data_cols = [
             "FINAL_INCIDENT_TYPE", "NUMBER_OF_INCIDENTS", "FIRST_PICKUP", "CALLTAKER_HANDOFF",
             "FDNY_PICKUP", "FDNY_JOB_CREATION", "EMS_PICKUP", "AGENCY_JOB_CREATION",
             "AGENCY_DISPATCH", "AGENCY_ARRIVAL", "FIRST_ARRIVAL_MULTI_AGENCY"
         ]
 
-        # Filter and display data for each section
         sections = ['EMS', 'FDNY', 'NYPD', 'NYPD (Non-CIP)']
         for section in sections:
             section_data = df_emergency[df_emergency['SECTION'] == section][data_cols]
             if not section_data.empty:
+                # Call the helper function, which writes to the current context (this container)
                 display_emergency_table(section, section_data, headers)
     else:
         st.error("Could not load Emergency Response data from Snowflake.")
 
-# ------------------------------------------------------------------------------
-# --- TAB 2: CAPITAL PROJECTS ---
-# ------------------------------------------------------------------------------
-with tab2:
-    st.header("NYC Capital Projects Overview")
-    if df_projects is not None and not df_projects.empty:
-        df_projects.columns = [col.upper() for col in df_projects.columns]
 
-        # --- FIX: Convert the column to numbers before summing ---
-        # pd.to_numeric converts the column, and errors='coerce'
-        # will turn any non-numeric text (like 'N/A') into NaN.
-        df_projects['PLANNEDCOMMIT_TOTAL'] = pd.to_numeric(
-            df_projects['PLANNEDCOMMIT_TOTAL'], errors='coerce'
-        )
+# --- Populate TAB 2 ---
+if df_projects is not None and not df_projects.empty:
+    df_projects.columns = [col.upper() for col in df_projects.columns]
 
-        # Show key metrics
-        total_projects = df_projects['PROJECTID'].nunique()
-        
-        # Now .sum() will work correctly, adding the numbers
-        total_commitment = df_projects['PLANNEDCOMMIT_TOTAL'].sum()
-        
-        m1, m2 = st.columns(2)
-        m1.metric("Total Unique Projects", f"{total_projects:,}")
-        
-        # This formatting will now work because total_commitment is a number
-        m2.metric("Total Planned Commitment", f"${total_commitment:,.0f}")
-        st.markdown("---")
+    # Process data
+    df_projects['PLANNEDCOMMIT_TOTAL'] = pd.to_numeric(
+        df_projects['PLANNEDCOMMIT_TOTAL'], errors='coerce'
+    )
+    total_projects = df_projects['PROJECTID'].nunique()
+    total_commitment = df_projects['PLANNEDCOMMIT_TOTAL'].sum()
+    
+    # Populate metrics
+    ph_m1.metric("Total Unique Projects", f"{total_projects:,}")
+    ph_m2.metric("Total Planned Commitment", f"${total_commitment:,.0f}")
 
-        # Map of project locations
-        st.subheader("Project Locations")
-        df_projects[['lat', 'lon']] = df_projects['THE_GEOM'].apply(parse_geom).apply(pd.Series)
-        map_data = df_projects.dropna(subset=['lat', 'lon'])
-        if not map_data.empty:
-            st.map(map_data, zoom=10)
-        else:
-            st.warning("No valid location data found to display on the map.")
+    # Process and populate map
+    df_projects[['lat', 'lon']] = df_projects['THE_GEOM'].apply(parse_geom).apply(pd.Series)
+    map_data = df_projects.dropna(subset=['lat', 'lon'])
+    
+    if not map_data.empty:
+        ph_map.map(map_data, zoom=10)
     else:
-        st.error("Could not load Capital Projects data from Snowflake.")
+        ph_map.warning("No valid location data found to display on the map.")
+else:
+    # Handle data load failure for Tab 2
+    ph_m1.error("Data load failed")
+    ph_m2.error("Data load failed")
+    ph_map.error("Could not load Capital Projects data from Snowflake.")
 
 
-# ------------------------------------------------------------------------------
-# --- TAB 3: 311 SERVICE REQUESTS ---
-# ------------------------------------------------------------------------------
-with tab3:
-    st.header("311 Service Requests Analysis")
-    if df_311 is not None and not df_311.empty:
-        df_311.columns = [col.upper() for col in df_311.columns]
+# --- Populate TAB 3 ---
+if df_311 is not None and not df_311.empty:
+    df_311.columns = [col.upper() for col in df_311.columns]
 
-        # Sidebar Filters
-        st.sidebar.header("311 Filters")
-        boroughs = ['ALL'] + sorted(df_311['BOROUGH'].dropna().unique().tolist())
-        selected_borough = st.sidebar.selectbox("Select a Borough", boroughs)
+    # Populate Sidebar Filter
+    ph_sidebar_filter.empty() # Clear "Loading..."
+    boroughs = ['ALL'] + sorted(df_311['BOROUGH'].dropna().unique().tolist())
+    selected_borough = ph_sidebar_filter.selectbox("Select a Borough", boroughs)
 
-        if selected_borough != 'ALL':
-            df_filtered = df_311[df_311['BOROUGH'] == selected_borough]
-        else:
-            df_filtered = df_311
-
-        # Display KPIs
-        kpi1, kpi2 = st.columns(2)
-        kpi1.metric("Total Requests Displayed", f"{len(df_filtered):,}")
-        kpi2.metric("Open Requests", f"{len(df_filtered[df_filtered['STATUS'] == 'Open']):,}")
-        st.markdown("---")
-
-        # Charts
-        st.subheader("Top 5 Complaint Types")
-        top_complaints = df_filtered['COMPLAINT_TYPE'].value_counts().nlargest(5)
-        st.bar_chart(top_complaints)
-
-        with st.expander("View Filtered Data Table"):
-            st.dataframe(df_filtered.head(1000))
+    # Filter data based on selection
+    if selected_borough != 'ALL':
+        df_filtered = df_311[df_311['BOROUGH'] == selected_borough]
     else:
-        st.error("Could not load 311 Service Requests data from Snowflake.")
+        df_filtered = df_311
+
+    # Populate KPIs
+    ph_kpi1.metric("Total Requests Displayed", f"{len(df_filtered):,}")
+    ph_kpi2.metric("Open Requests", f"{len(df_filtered[df_filtered['STATUS'] == 'Open']):,}")
+
+    # Populate Chart
+    top_complaints = df_filtered['COMPLAINT_TYPE'].value_counts().nlargest(5)
+    ph_chart_311.bar_chart(top_complaints)
+
+    # Populate Data Table
+    ph_table_311.dataframe(df_filtered.head(1000))
+else:
+    # Handle data load failure for Tab 3
+    ph_sidebar_filter.error("Data failed")
+    ph_kpi1.error("Data load failed")
+    ph_kpi2.error("Data load failed")
+    ph_chart_311.error("Data load failed")
+    ph_table_311.error("Could not load 311 Service Requests data from Snowflake.")
