@@ -38,7 +38,7 @@ def load_demographics_data():
 
 # Load the demographic data
 demographics_data = load_demographics_data()
-print(demographics_data)
+
 # Extract values with a fallback if the API call fails
 if demographics_data:
     nyc_population = demographics_data.get('population', 'N/A')

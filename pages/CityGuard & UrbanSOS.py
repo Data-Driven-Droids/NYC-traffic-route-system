@@ -19,7 +19,7 @@ if 'selected_crime' not in st.session_state:
 def load_all_data():
     """Loads and processes all data from Snowflake using the specific view function."""
     
-    print("--- Loading fresh data from Snowflake... ---")
+    # print("--- Loading fresh data from Snowflake... ---")
     # Dispatch views (pre-aggregated in Snowflake)
     df_totals = get_city_guard_data_by_view("SERVICE_CALLS_TOTALS")
     df_cip_breakdown = get_city_guard_data_by_view("SERVICE_CALLS_CIP_BREAKDOWN")

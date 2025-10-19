@@ -23,7 +23,7 @@ def get_nyc_demographics() -> Optional[Dict[str, str]]:
         api_key = os.environ["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
     except KeyError:
-        print("🚨 ERROR: GOOGLE_API_KEY not found. Please set it in your .env file.")
+        # print("🚨 ERROR: GOOGLE_API_KEY not found. Please set it in your .env file.")
         return None
 
     # 2. Craft a clear, structured prompt
@@ -40,7 +40,7 @@ def get_nyc_demographics() -> Optional[Dict[str, str]]:
     
     # 3. Call the Gemini 1.5 Flash model
     try:
-        print("Calling Gemini 1.5 Flash to fetch NYC demographics...")
+        # print("Calling Gemini 1.5 Flash to fetch NYC demographics...")
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
         
@@ -52,17 +52,17 @@ def get_nyc_demographics() -> Optional[Dict[str, str]]:
         
         # Validate that the expected keys are in the response
         if "population" in data and "birth_rate" in data:
-            print("✅ Successfully fetched and parsed data.")
+            # print("✅ Successfully fetched and parsed data.")
             return data
         else:
-            print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys.")
+            # print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys.")
             return None
 
     except json.JSONDecodeError:
-        print(f"❌ ERROR: Failed to decode JSON from the model's response. Response was:\n{response_text}")
+        # print(f"❌ ERROR: Failed to decode JSON from the model's response. Response was:\n{response_text}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        # print(f"An unexpected error occurred: {e}")
         return None
 
 # --- Example of how to use the function ---

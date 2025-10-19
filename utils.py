@@ -32,7 +32,7 @@ def get_air_quality_data_nyc(latitude: float = 40.7128, longitude: float = -74.0
         # it should probably be Config.GOOGLE_AIR_QUALITY_API_KEY
         api_key = Config.GOOGLE_MAPS_API_KEY 
     except (NameError, AttributeError) as e:
-        print(f"Error accessing API Key: {e}")
+        # print(f"Error accessing API Key: {e}")
         return None
 
     url = "https://airquality.googleapis.com/v1/currentConditions:lookup"
@@ -94,14 +94,14 @@ def get_air_quality_data_nyc(latitude: float = 40.7128, longitude: float = -74.0
         if aqi_data.get('aqi') is not None:
              return aqi_data
         else:
-             print("Data found but could not extract main AQI index.")
+             # print("Data found but could not extract main AQI index.")
              return None
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching air quality data: {e}")
+        # print(f"Error fetching air quality data: {e}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        # print(f"An unexpected error occurred: {e}")
         return None
     
 def get_weather_data_nyc(latitude: float = 40.7143, longitude: float = -74.006):
@@ -198,7 +198,7 @@ def get_weather_data_nyc(latitude: float = 40.7143, longitude: float = -74.006):
             final_hourly_df = filtered_hourly_df[['Time', 'Temperature', 'Humidity', 'Precip. Prob.']]
 
         except Exception as e:
-            print(f"Error processing hourly data: {e}")
+            # print(f"Error processing hourly data: {e}")
             final_hourly_df = pd.DataFrame(columns=['Time', 'Temperature', 'Humidity', 'Precip. Prob.'])
 
         # --- Daily Data Structuring ---
@@ -226,10 +226,10 @@ def get_weather_data_nyc(latitude: float = 40.7143, longitude: float = -74.006):
         }
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching weather data: {e}")
+        # print(f"Error fetching weather data: {e}")
         return None # Returns None on API/network failure
     except Exception as e:
-        print(f"An unexpected error occurred during weather data processing: {e}")
+        # print(f"An unexpected error occurred during weather data processing: {e}")
         return None # Returns None on any other processing error
     
 def get_news_headlines(region: str) -> str:
@@ -266,7 +266,7 @@ def get_news_headlines(region: str) -> str:
         return " \t • \t ".join(headlines) + " \t • \t "
         
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching news data: {e}")
+        # print(f"Error fetching news data: {e}")
         return f"Error fetching news for {region}: API request failed."
     
 
@@ -308,16 +308,16 @@ def _create_snowflake_connection(
     # Critical check for required parameters
     required_params = ['user', 'password', 'account']
     if any(p not in conn_params or conn_params.get(p) is None for p in required_params):
-        print("ERROR: Essential connection parameters (user, password, account) are missing. Please ensure environment variables are set (SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ACCOUNT) or provided as arguments.")
+        # print("ERROR: Essential connection parameters (user, password, account) are missing. Please ensure environment variables are set (SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ACCOUNT) or provided as arguments.")
         return None
 
     try:
         # 2. Establish Connection
         conn = snowflake.connector.connect(**conn_params)
-        print("Snowflake connection established successfully.")
+        # print("Snowflake connection established successfully.")
         return conn
     except Exception as e:
-        print(f"Failed to establish Snowflake connection: {e}")
+        # print(f"Failed to establish Snowflake connection: {e}")
         return None
 
 
@@ -367,7 +367,7 @@ def fetch_data_from_snowflake(
 
     try:
         # 3. Execute Query and Fetch Data into DataFrame
-        print(f"Executing query: {query[:50]}...")
+        # print(f"Executing query: {query[:50]}...")
         cursor = conn.cursor()
         cursor.execute(query)
         
@@ -375,21 +375,21 @@ def fetch_data_from_snowflake(
         df = cursor.fetch_pandas_all()
         
         cursor.close()
-        print("Query executed successfully and data fetched.")
+        # print("Query executed successfully and data fetched.")
         return df
 
     except snowflake.connector.errors.ProgrammingError as e:
-        print(f"Snowflake Programming Error: {e.errno}: {e.msg}")
+        # print(f"Snowflake Programming Error: {e.errno}: {e.msg}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred during query execution: {e}")
+        # print(f"An unexpected error occurred during query execution: {e}")
         return None
 
     finally:
         # 4. Ensure Connection Closure
         if conn:
             conn.close()
-            print("Snowflake connection closed.")
+            # print("Snowflake connection closed.")
 
 BINSYNC_VIEWS: Dict[str, str] = {
     "WASTE_TONNAGE": "DEV_PREMIER_LEAGUE.BIN_SYNC_SERVICE.VW_MONTHLY_WASTE_TONNAGE_BY_BOROUGH",
@@ -416,14 +416,14 @@ def get_binsync_data_by_view(
     view_name = BINSYNC_VIEWS.get(view_key)
     
     if view_name is None:
-        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(BINSYNC_VIEWS.keys())}")
+        # print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(BINSYNC_VIEWS.keys())}")
         return None
     
     query = f"SELECT * FROM {view_name};"
     
-    print(f"\n=======================================================")
-    print(f"Attempting to fetch data for view: {view_key}")
-    print(f"=======================================================")
+    # print(f"\n=======================================================")
+    # print(f"Attempting to fetch data for view: {view_key}")
+    # print(f"=======================================================")
 
     df = fetch_data_from_snowflake(
         query=query,
@@ -459,7 +459,7 @@ def calculate_monthly_waste_metrics(connection_params: Optional[Dict] = None) ->
     )
     
     if df is None:
-        print("Aggregation failed: Could not retrieve data for 'RECYCLING_DIVERSION_RATE'.")
+        # print("Aggregation failed: Could not retrieve data for 'RECYCLING_DIVERSION_RATE'.")
         return None
     
     # 2. Perform the aggregation by 'MONTH'
@@ -491,7 +491,7 @@ def calculate_monthly_waste_metrics(connection_params: Optional[Dict] = None) ->
     ]
     monthly_summary[columns_to_round] = monthly_summary[columns_to_round].round(2)
     
-    print("\n✅ SUCCESS: Calculated aggregated monthly metrics.")
+    # print("\n✅ SUCCESS: Calculated aggregated monthly metrics.")
     
     return monthly_summary
 
@@ -513,7 +513,7 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
     )
 
     if df is None or df.empty:
-        print("⚠️ Data retrieval failed or empty for 'BIN_LOCATIONS'.")
+        # print("⚠️ Data retrieval failed or empty for 'BIN_LOCATIONS'.")
         return None
 
     # 2. Normalize column names (make uppercase for consistency)
@@ -557,10 +557,10 @@ def get_bin_locations_data(connection_params: Optional[Dict] = None) -> Optional
     df = df.drop_duplicates(subset=['lat', 'lon', 'Name']).reset_index(drop=True)
 
     if df.empty:
-        print("⚠️ All bin location rows were invalid or filtered out.")
+        # print("⚠️ All bin location rows were invalid or filtered out.")
         return None
 
-    print(f"✅ SUCCESS: Fetched and cleaned {len(df)} bin locations.")
+    # print(f"✅ SUCCESS: Fetched and cleaned {len(df)} bin locations.")
     
     # Return relevant columns
     available_cols = ['lat', 'lon', 'Name', 'Area', 'Type']
@@ -595,14 +595,14 @@ def get_city_guard_data_by_view(
     view_name = CITY_GUARD_VIEWS.get(view_key)
     
     if view_name is None:
-        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(CITY_GUARD_VIEWS.keys())}")
+        # print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(CITY_GUARD_VIEWS.keys())}")
         return None
     
     query = f"SELECT * FROM {view_name};"
     
-    print(f"\n=======================================================")
-    print(f"Attempting to fetch data for view: {view_key}")
-    print(f"=======================================================")
+    # print(f"\n=======================================================")
+    # print(f"Attempting to fetch data for view: {view_key}")
+    # print(f"=======================================================")
 
     df = fetch_data_from_snowflake(
         query=query,
@@ -643,7 +643,7 @@ async def get_nyc_demographics() -> Optional[Dict[str, str]]:
     
     # 3. Call the streaming function and aggregate the response
     full_response = ""
-    print("Calling Gemini 2.5 Flash to fetch NYC demographics (via stream)...")
+    # print("Calling Gemini 2.5 Flash to fetch NYC demographics (via stream)...")
     
     try:
         # Use the "gemini-2.5-flash" model for this specific task
@@ -652,34 +652,34 @@ async def get_nyc_demographics() -> Optional[Dict[str, str]]:
             history=[],
         ):
             if chunk.startswith("Error:"):
-                print(f"🚨 {chunk}")
+                # print(f"🚨 {chunk}")
                 return None
             full_response += chunk
         
-        print(full_response)
-        print("++++++++++++++++++++ ")
+        # print(full_response)
+        # print("++++++++++++++++++++ ")
         # 4. Clean and parse the aggregated JSON response
         response_text = full_response.strip().replace("```json", "").replace("```", "").strip()
         
         if not response_text:
-            print("⚠️ ERROR: Received an empty response from the model.")
+            # print("⚠️ ERROR: Received an empty response from the model.")
             return None
             
         data = json.loads(response_text)
         
         # 5. Perform specific validation
         if data and isinstance(data, dict) and "population" in data and "birth_rate" in data:
-            print("✅ Successfully fetched, aggregated, and parsed data.")
+            # print("✅ Successfully fetched, aggregated, and parsed data.")
             return data
         else:
-            print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys or was not a dict.")
+            # print("⚠️ ERROR: The model response was missing the required 'population' or 'birth_rate' keys or was not a dict.")
             return None
 
     except json.JSONDecodeError:
-        print(f"❌ ERROR: Failed to decode JSON from the aggregated model's response. Response was:\n{response_text}")
+        # print(f"❌ ERROR: Failed to decode JSON from the aggregated model's response. Response was:\n{response_text}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        # print(f"An unexpected error occurred: {e}")
         return None
     
     
@@ -702,14 +702,14 @@ def get_resilient_cities_data_by_view(
     view_name = RESILIENT_CITIES_VIEWS.get(view_key)
     
     if view_name is None:
-        print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(RESILIENT_CITIES_VIEWS.keys())}")
+        # print(f"ERROR: Invalid view_key: '{view_key}'. Available keys are: {', '.join(RESILIENT_CITIES_VIEWS.keys())}")
         return None
     
     query = f"SELECT * FROM {view_name};"
     
-    print(f"\n=======================================================")
-    print(f"Attempting to fetch data for view: {view_key}")
-    print(f"=======================================================")
+    # print(f"\n=======================================================")
+    # print(f"Attempting to fetch data for view: {view_key}")
+    # print(f"=======================================================")
 
     # This reuses your generic fetch function
     df = fetch_data_from_snowflake(
@@ -806,7 +806,7 @@ async def get_emergency_contacts_async() -> Optional[List[Dict[str, str]]]:
     try:
         async for chunk in stream_gemini_response(prompt=prompt, history=[]):
             if chunk.startswith("Error:"):
-                print(chunk)
+                # print(chunk)
                 return None
             full_response += chunk
 
@@ -828,7 +828,7 @@ async def get_emergency_contacts_async() -> Optional[List[Dict[str, str]]]:
             return normalized if normalized else None
         return None
     except Exception as e:
-        print(f"Error parsing emergency contacts: {e}")
+        # print(f"Error parsing emergency contacts: {e}")
         return None
 
 
