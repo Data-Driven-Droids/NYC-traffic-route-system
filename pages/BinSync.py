@@ -384,7 +384,7 @@ with map_placeholder.container():
             layers=[layer],
             initial_view_state=view_state,
             tooltip=tooltip,
-            map_style="httpsf://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
         )
         
         st.pydeck_chart(r, use_container_width=True)
