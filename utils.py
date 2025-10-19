@@ -731,7 +731,7 @@ def get_resilient_cities_data_by_view(
 async def stream_gemini_response(
     prompt: str,
     history: list,
-    model_name: str = "gemini-2.5-pro",
+    model_name: str = "gemini-live-2.5-flash-preview",
     system_instruction: Optional[str] = None,
     tools: Optional[list] = None
 ):
