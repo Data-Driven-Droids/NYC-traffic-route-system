@@ -24,7 +24,10 @@ def load_all_data():
     df_totals = get_city_guard_data_by_view("SERVICE_CALLS_TOTALS")
     df_cip_breakdown = get_city_guard_data_by_view("SERVICE_CALLS_CIP_BREAKDOWN")
     df_calls_by_type = get_city_guard_data_by_view("SERVICE_CALLS_BY_TYPE")
+    df_calls_by_type_non_cip = get_city_guard_data_by_view("SERVICE_CALLS_BY_TYPE_NON_CIP")
     df_calls_by_borough = get_city_guard_data_by_view("SERVICE_CALLS_BY_BOROUGH")
+    df_calls_by_borough_cip = get_city_guard_data_by_view("SERVICE_CALLS_BY_BOROUGH_CIP")
+    df_calls_by_borough_non_cip = get_city_guard_data_by_view("SERVICE_CALLS_BY_BOROUGH_NON_CIP")
 
     # Force incidents (raw view still okay)
     df_use_of_force = get_city_guard_data_by_view("USE_OF_FORCE")
@@ -85,15 +88,64 @@ def load_all_data():
         if calls_col: df_norm = df_norm.rename(columns={calls_col: 'Calls'})
         processed_data["dispatch"]["df_calls"] = df_norm[["Category","Calls"]]
 
+    # Calls by Type (Non-CIP)
+    if df_calls_by_type_non_cip is not None and not df_calls_by_type_non_cip.empty:
+        df_calls_by_type_non_cip.columns = [c.upper() for c in df_calls_by_type_non_cip.columns]
+        cat_col = next((c for c in df_calls_by_type_non_cip.columns if c in ['CATEGORY','TYPE','CIP_JOBS']), None)
+        calls_col = next((c for c in df_calls_by_type_non_cip.columns if c in ['CALLS','COUNT','CNT','TOTAL']), None)
+        df_norm = df_calls_by_type_non_cip.copy()
+        if cat_col: df_norm = df_norm.rename(columns={cat_col: 'Category'})
+        if calls_col: df_norm = df_norm.rename(columns={calls_col: 'Calls'})
+        processed_data["dispatch"]["df_calls_non_cip"] = df_norm[["Category","Calls"]]
+
     # Calls by Borough
     if df_calls_by_borough is not None and not df_calls_by_borough.empty:
         df_calls_by_borough.columns = [c.upper() for c in df_calls_by_borough.columns]
         b_col = next((c for c in df_calls_by_borough.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
         pct_col = next((c for c in df_calls_by_borough.columns if c in ['PERCENTAGE','PCT','PERCENT']), None)
+        cnt_col = next((c for c in df_calls_by_borough.columns if c in ['COUNT','CNT','TOTAL']), None)
         df_norm = df_calls_by_borough.copy()
         if b_col: df_norm = df_norm.rename(columns={b_col: 'Borough'})
-        if pct_col: df_norm = df_norm.rename(columns={pct_col: 'Percentage'})
+        if pct_col:
+            df_norm = df_norm.rename(columns={pct_col: 'Percentage'})
+        elif cnt_col:
+            # Compute percentage from counts
+            total_cnt = df_norm[cnt_col].sum()
+            if total_cnt and total_cnt > 0:
+                df_norm['Percentage'] = (df_norm[cnt_col] / total_cnt * 100).round(2)
         processed_data["dispatch"]["df_borough"] = df_norm[["Borough","Percentage"]]
+
+    # Calls by Borough (CIP-only)
+    if df_calls_by_borough_cip is not None and not df_calls_by_borough_cip.empty:
+        df_calls_by_borough_cip.columns = [c.upper() for c in df_calls_by_borough_cip.columns]
+        b_col = next((c for c in df_calls_by_borough_cip.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
+        pct_col = next((c for c in df_calls_by_borough_cip.columns if c in ['PERCENTAGE','PCT','PERCENT']), None)
+        cnt_col = next((c for c in df_calls_by_borough_cip.columns if c in ['COUNT','CNT','TOTAL']), None)
+        df_norm = df_calls_by_borough_cip.copy()
+        if b_col: df_norm = df_norm.rename(columns={b_col: 'Borough'})
+        if pct_col:
+            df_norm = df_norm.rename(columns={pct_col: 'Percentage'})
+        elif cnt_col:
+            total_cnt = df_norm[cnt_col].sum()
+            if total_cnt and total_cnt > 0:
+                df_norm['Percentage'] = (df_norm[cnt_col] / total_cnt * 100).round(2)
+        processed_data["dispatch"]["df_borough_cip"] = df_norm[["Borough","Percentage"]]
+
+    # Calls by Borough (Non-CIP)
+    if df_calls_by_borough_non_cip is not None and not df_calls_by_borough_non_cip.empty:
+        df_calls_by_borough_non_cip.columns = [c.upper() for c in df_calls_by_borough_non_cip.columns]
+        b_col = next((c for c in df_calls_by_borough_non_cip.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
+        pct_col = next((c for c in df_calls_by_borough_non_cip.columns if c in ['PERCENTAGE','PCT','PERCENT']), None)
+        cnt_col = next((c for c in df_calls_by_borough_non_cip.columns if c in ['COUNT','CNT','TOTAL']), None)
+        df_norm = df_calls_by_borough_non_cip.copy()
+        if b_col: df_norm = df_norm.rename(columns={b_col: 'Borough'})
+        if pct_col:
+            df_norm = df_norm.rename(columns={pct_col: 'Percentage'})
+        elif cnt_col:
+            total_cnt = df_norm[cnt_col].sum()
+            if total_cnt and total_cnt > 0:
+                df_norm['Percentage'] = (df_norm[cnt_col] / total_cnt * 100).round(2)
+        processed_data["dispatch"]["df_borough_non_cip"] = df_norm[["Borough","Percentage"]]
     
     # --- Process Data for Tab 2: Force Dashboard ---
     if df_use_of_force is not None and not df_use_of_force.empty:
@@ -340,24 +392,90 @@ div[data-testid*="stHorizontalBlock"] > div.compstat-row:hover {
 # --- TAB 1: DISPATCH ACTIVITY (Live Data) ---
 # ------------------------------------------------------------------------------
 with tab_dispatch:
-    st.subheader("NYPD Dispatch Activity")
+    st.subheader("NYPD Dispatch Activity (Jan-Jun 2025)")
+
+    # Master filter: All / CIP / Non CIP (selectbox)
+    filter_choice = st.selectbox("Filter display by call types:", ["All", "CIP", "Non CIP"], index=0, key="dispatch_filter_select")
+
+    # Derive KPI values based on filter
+    total_calls_val = dispatch_data.get("total_calls")
+    total_crit_ser_val = dispatch_data.get("total_critical_serious")
+
+    df_cip_meta = dispatch_data.get("df_cip")
+    if isinstance(df_cip_meta, pd.DataFrame) and not df_cip_meta.empty and 'Type' in df_cip_meta.columns:
+        # Try to use counts if present
+        if 'Count' in df_cip_meta.columns:
+            try:
+                cip_count = int(df_cip_meta.loc[df_cip_meta['Type'].str.upper() == 'CIP', 'Count'].iloc[0]) if not df_cip_meta.loc[df_cip_meta['Type'].str.upper() == 'CIP'].empty else None
+            except Exception:
+                cip_count = None
+            try:
+                non_count = int(df_cip_meta.loc[df_cip_meta['Type'].str.upper() == 'NON CIP', 'Count'].iloc[0]) if not df_cip_meta.loc[df_cip_meta['Type'].str.upper() == 'NON CIP'].empty else None
+            except Exception:
+                non_count = None
+            if filter_choice == 'CIP' and cip_count is not None:
+                total_calls_val = f"{cip_count:,}"
+                # Critical & Serious are CIP by definition in our totals view
+                # Keep existing total_critical_serious value
+            elif filter_choice == 'Non CIP' and non_count is not None:
+                total_calls_val = f"{non_count:,}"
+                total_crit_ser_val = f"{0:,}"
+
     col_metric_1, col_metric_2 = st.columns(2)
-    col_metric_1.metric(label="Total Calls for Service (Last Year)", value=dispatch_data.get("total_calls", "N/A"))
-    col_metric_2.metric(label="Critical & Serious Calls", value=dispatch_data.get("total_critical_serious", "N/A"))
+    col_metric_1.metric(label="Total Calls for Service", value=total_calls_val or "N/A")
+    col_metric_2.metric(label="Critical & Serious Calls", value=total_crit_ser_val or "N/A")
     st.markdown("---")
+    # Prepare frames per filter for visuals
+    df_cip_meta = dispatch_data.get("df_cip")
+    donut_df = df_cip_meta
+    if filter_choice in ("CIP", "Non CIP") and isinstance(df_cip_meta, pd.DataFrame) and not df_cip_meta.empty:
+        # Build a single-slice 100% donut for the selected filter, carry Count if available
+        if filter_choice == "CIP":
+            count_val = None
+            if 'Count' in df_cip_meta.columns:
+                row = df_cip_meta[df_cip_meta['Type'].str.upper() == 'CIP']
+                if not row.empty:
+                    try:
+                        count_val = int(row.iloc[0]['Count'])
+                    except Exception:
+                        count_val = None
+            donut_df = pd.DataFrame([{ 'Type': 'CIP', 'Percentage': 100.0, **({'Count': count_val} if count_val is not None else {}) }])
+        else:
+            count_val = None
+            if 'Count' in df_cip_meta.columns:
+                row = df_cip_meta[df_cip_meta['Type'].str.upper() == 'NON CIP']
+                if not row.empty:
+                    try:
+                        count_val = int(row.iloc[0]['Count'])
+                    except Exception:
+                        count_val = None
+            donut_df = pd.DataFrame([{ 'Type': 'Non CIP', 'Percentage': 100.0, **({'Count': count_val} if count_val is not None else {}) }])
+
+    # Select calls-by-type frame
+    calls_df = dispatch_data.get("df_calls")
+    if filter_choice == 'Non CIP':
+        calls_df = dispatch_data.get("df_calls_non_cip")
+
+    # Select borough frame
+    borough_df = dispatch_data.get("df_borough")
+    if filter_choice == 'CIP' and dispatch_data.get("df_borough_cip") is not None:
+        borough_df = dispatch_data.get("df_borough_cip")
+    elif filter_choice == 'Non CIP' and dispatch_data.get("df_borough_non_cip") is not None:
+        borough_df = dispatch_data.get("df_borough_non_cip")
+
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col1:
-        plot_cip_vs_non_cip(dispatch_data.get("df_cip"))
+        plot_cip_vs_non_cip(donut_df)
     with col2:
-        plot_cip_calls_by_type(dispatch_data.get("df_calls"))
+        plot_cip_calls_by_type(calls_df)
     with col3:
-        plot_calls_by_borough(dispatch_data.get("df_borough"))
+        plot_calls_by_borough(borough_df)
 
 # ------------------------------------------------------------------------------
 # --- TAB 2: FORCE DASHBOARD (Live Data) ---
 # ------------------------------------------------------------------------------
 with tab_force:
-    st.subheader("NYPD Use of Force Incidents (2025)")
+    st.subheader("NYPD Use of Force Incidents (Jan-Jun 2025)")
     col_metric_1, col_metric_2 = st.columns(2)
     col_metric_1.metric(label="Total Incidents", value=force_data.get("total_incidents", "N/A"))
     col_metric_2.metric(label="Members of Service", value=force_data.get("row_count", "N/A"))
@@ -534,3 +652,57 @@ with tab_emergency_contacts:
     """
 
     st.markdown(table_html, unsafe_allow_html=True)
+
+# ------------------------------------------------------------------------------
+# --- GLOSSARY / ABOUT CALL TYPES ---
+# ------------------------------------------------------------------------------
+st.markdown("---")
+with st.expander("📘 Glossary: About Call Types", expanded=False):
+    glossary_css = """
+    <style>
+      .glossary-card {
+        border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .glossary-card h3 { margin: 0 0 8px 0; font-size: 1.15rem; color: #111827; }
+      .glossary-card h4 { margin: 16px 0 6px 0; font-size: 1rem; color: #1f2937; }
+      .glossary-card p { margin: 0 0 8px 0; color: #374151; }
+      .glossary-card ul { margin: 6px 0 10px 18px; color: #374151; }
+      .glossary-card li { margin: 4px 0; }
+      .glossary-footer { margin-top: 10px; color: #6b7280; font-size: 0.9rem; }
+      @media (prefers-color-scheme: dark) {
+        .glossary-card { background: #0b1220; border-color: #374151; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+        .glossary-card h3 { color: #e5e7eb; }
+        .glossary-card h4 { color: #e5e7eb; }
+        .glossary-card p, .glossary-card ul { color: #cbd5e1; }
+        .glossary-footer { color: #9ca3af; }
+      }
+    </style>
+    """
+
+    glossary_html = """
+    <div class="glossary-card">
+      <h3>About Call Types</h3>
+      <p>This dashboard classifies NYPD Calls for Service into two broad groups:</p>
+      <h4>Crime in Progress (CIP)</h4>
+      <ul>
+        <li><strong>Critical</strong> – Immediate danger to life or property (e.g., shots fired, armed robbery)</li>
+        <li><strong>Serious</strong> – Significant public safety concerns (e.g., assault in progress, burglary)</li>
+        <li><strong>Non Critical</strong> – Lower-priority in-progress events (e.g., trespassing, disorderly group)</li>
+      </ul>
+      <h4>NON CIP</h4>
+      <p>Routine or administrative in nature, including:</p>
+      <ul>
+        <li>Noise complaints</li>
+        <li>Vehicle accidents</li>
+        <li>Welfare checks</li>
+        <li>Public assistance or non-urgent reports</li>
+      </ul>
+      <div class="glossary-footer">
+        <div>Dashboard created by <strong>Brendan Lambert</strong></div>
+        <div>Data source: <a href="https://data.cityofnewyork.us/Public-Safety/NYPD-Calls-for-Service-Year-to-Date-/n2zq-pubd/about_data" target="_blank">NYC Open Data – NYPD Calls for Service</a></div>
+      </div>
+    </div>
+    """
+
+    st.markdown(glossary_css + glossary_html, unsafe_allow_html=True)
