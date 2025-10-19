@@ -10,6 +10,12 @@ from config.settings import Config
 import json as json
 from google import genai
 from google.genai import types
+from google.genai.types import (
+    GenerateContentConfig,
+    GoogleSearch,
+    HttpOptions,
+    Tool,
+)
 import asyncio
 
 load_dotenv() 
@@ -725,7 +731,7 @@ def get_resilient_cities_data_by_view(
 async def stream_gemini_response(
     prompt: str,
     history: list,
-    model_name: str = "gemini-live-2.5-flash-preview",
+    model_name: str = "gemini-2.5-pro",
     system_instruction: Optional[str] = None,
     tools: Optional[list] = None
 ):
@@ -760,6 +766,10 @@ async def stream_gemini_response(
 
     # Build config dynamically based on provided arguments
     config = {"response_modalities": ["TEXT"]}
+    active_tools = tools
+    if active_tools is None:
+        # Default to Google Search tool for RAG/grounding on live models
+        active_tools = [{"google_search": {}}]
     if tools:
         config["tools"] = tools
     if system_instruction:
