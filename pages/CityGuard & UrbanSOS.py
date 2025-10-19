@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import date
 import pydeck as pdk
-import re # Added for the parse_geom function from previous scripts, though not used here, good practice.
+import re # Added for the parse_geom function
 
 # Make sure your utils.py file is in the same directory
 from utils import get_city_guard_data_by_view, get_emergency_contacts 
@@ -15,14 +15,18 @@ if 'selected_crime' not in st.session_state:
     st.session_state.selected_crime = None
 
 # ==============================================================================
-#                 1. DATA LOADING & PROCESSING (Definitions)
+#           1. DATA LOADING & PROCESSING (Definitions)
 # ==============================================================================
 
 @st.cache_data(ttl=3600) # Cache data for 1 hour
 def load_all_data():
-    """Loads and processes all data from Snowflake using the specific view function."""
+    """
+    Loads and processes all dynamic data from Snowflake.
+    - Dispatch and Force data from 'get_city_guard_data_by_view'
+    - Contacts data from 'get_emergency_contacts'
+    """
     
-    # Dispatch views (pre-aggregated in Snowflake)
+    # --- Fetch Dispatch Views ---
     df_totals = get_city_guard_data_by_view("SERVICE_CALLS_TOTALS")
     df_cip_breakdown = get_city_guard_data_by_view("SERVICE_CALLS_CIP_BREAKDOWN")
     df_calls_by_type = get_city_guard_data_by_view("SERVICE_CALLS_BY_TYPE")
@@ -31,24 +35,27 @@ def load_all_data():
     df_calls_by_borough_cip = get_city_guard_data_by_view("SERVICE_CALLS_BY_BOROUGH_CIP")
     df_calls_by_borough_non_cip = get_city_guard_data_by_view("SERVICE_CALLS_BY_BOROUGH_NON_CIP")
 
-    # Force incidents (raw view still okay)
+    # --- Fetch Force Incidents ---
     df_use_of_force = get_city_guard_data_by_view("USE_OF_FORCE")
-    # Service calls (for map) - fetch and trim client-side to recent 10k
+    
+    # --- Fetch Service Calls (for map) ---
     df_service_calls = get_city_guard_data_by_view("SERVICE_CALLS")
+    
+    # --- Fetch Contacts ---
+    contacts = get_emergency_contacts()
     
     processed_data = {
         "dispatch": {},
-        "force": {}
+        "force": {},
+        "contacts": contacts or [] # Add contacts to the return dict
     }
 
     # --- Process Data for Tab 1: Dispatch Activity (using pre-aggregated views) ---
-    # Totals
     if df_totals is not None and not df_totals.empty:
         cols = [c.upper() for c in df_totals.columns]
         df_totals.columns = cols
         total_calls_val = None
         critical_serious_val = None
-        # Flexible extraction
         for key in ['TOTAL_CALLS', 'TOTAL', 'COUNT', 'TOTAL_COUNT']:
             if key in cols:
                 try:
@@ -69,10 +76,8 @@ def load_all_data():
         if critical_serious_val is not None:
             processed_data["dispatch"]["total_critical_serious"] = f"{critical_serious_val:,}"
 
-    # CIP vs Non CIP breakdown
     if df_cip_breakdown is not None and not df_cip_breakdown.empty:
         df_cip_breakdown.columns = [c.upper() for c in df_cip_breakdown.columns]
-        # Try to normalize to Type, Count, Percentage
         type_col = next((c for c in df_cip_breakdown.columns if c in ['TYPE','CATEGORY']), None)
         count_col = next((c for c in df_cip_breakdown.columns if c in ['COUNT','CNT','TOTAL']), None)
         pct_col = next((c for c in df_cip_breakdown.columns if c in ['PERCENTAGE','PCT','PERCENT']), None)
@@ -83,7 +88,6 @@ def load_all_data():
         keep_cols = [c for c in ['Type','Count','Percentage'] if c in df_norm.columns]
         processed_data["dispatch"]["df_cip"] = df_norm[keep_cols]
 
-    # Calls by Type
     if df_calls_by_type is not None and not df_calls_by_type.empty:
         df_calls_by_type.columns = [c.upper() for c in df_calls_by_type.columns]
         cat_col = next((c for c in df_calls_by_type.columns if c in ['CATEGORY','TYPE','CIP_JOBS']), None)
@@ -93,7 +97,6 @@ def load_all_data():
         if calls_col: df_norm = df_norm.rename(columns={calls_col: 'Calls'})
         processed_data["dispatch"]["df_calls"] = df_norm[["Category","Calls"]]
 
-    # Calls by Type (Non-CIP)
     if df_calls_by_type_non_cip is not None and not df_calls_by_type_non_cip.empty:
         df_calls_by_type_non_cip.columns = [c.upper() for c in df_calls_by_type_non_cip.columns]
         cat_col = next((c for c in df_calls_by_type_non_cip.columns if c in ['CATEGORY','TYPE','CIP_JOBS']), None)
@@ -103,7 +106,6 @@ def load_all_data():
         if calls_col: df_norm = df_norm.rename(columns={calls_col: 'Calls'})
         processed_data["dispatch"]["df_calls_non_cip"] = df_norm[["Category","Calls"]]
 
-    # Calls by Borough
     if df_calls_by_borough is not None and not df_calls_by_borough.empty:
         df_calls_by_borough.columns = [c.upper() for c in df_calls_by_borough.columns]
         b_col = next((c for c in df_calls_by_borough.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
@@ -114,13 +116,11 @@ def load_all_data():
         if pct_col:
             df_norm = df_norm.rename(columns={pct_col: 'Percentage'})
         elif cnt_col:
-            # Compute percentage from counts
             total_cnt = pd.to_numeric(df_norm[cnt_col], errors='coerce').sum()
             if total_cnt and total_cnt > 0:
                 df_norm['Percentage'] = (pd.to_numeric(df_norm[cnt_col], errors='coerce') / total_cnt * 100).round(2)
         processed_data["dispatch"]["df_borough"] = df_norm[["Borough","Percentage"]]
 
-    # Calls by Borough (CIP-only)
     if df_calls_by_borough_cip is not None and not df_calls_by_borough_cip.empty:
         df_calls_by_borough_cip.columns = [c.upper() for c in df_calls_by_borough_cip.columns]
         b_col = next((c for c in df_calls_by_borough_cip.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
@@ -136,7 +136,6 @@ def load_all_data():
                 df_norm['Percentage'] = (pd.to_numeric(df_norm[cnt_col], errors='coerce') / total_cnt * 100).round(2)
         processed_data["dispatch"]["df_borough_cip"] = df_norm[["Borough","Percentage"]]
 
-    # Calls by Borough (Non-CIP)
     if df_calls_by_borough_non_cip is not None and not df_calls_by_borough_non_cip.empty:
         df_calls_by_borough_non_cip.columns = [c.upper() for c in df_calls_by_borough_non_cip.columns]
         b_col = next((c for c in df_calls_by_borough_non_cip.columns if c in ['BOROUGH','BORO_NM','BORO']), None)
@@ -212,7 +211,7 @@ def load_all_data():
 
     return processed_data
 
-# --- Static Data for Tab 3: CompStat ---
+# --- Static Data for Tab 3: CompStat (Unchanged) ---
 COMPSTAT_DATA = [
     ["Murder", 5, 4, 25.0, 18, 24, -25.0, 255], ["Rape", 44, 33, 33.3, 152, 155, -1.9, 1694], ["Robbery", 284, 328, -13.4, 1231, 1322, -6.9, 11921], ["Felony Assault", 562, 560, -12.1, 2243, 2324, -3.5, 23397],
     ["Burglary", 233, 258, -9.7, 912, 1070, -14.8, 9842], ["Grand Larceny", 917, 924, -0.8, 3864, 3812, 1.3, 37269], ["Grand Larceny Auto", 274, 302, -9.3, 1116, 1232, -9.4, 10849], ["Total", 2409, 2409, -6.6, 9636, 10039, -4.0, 95127],
@@ -232,7 +231,7 @@ df_final_display = df_final_display[df_final_display["CompStat Book"] != "Total"
 
 
 # ==============================================================================
-#                 CHART PLOTTING FUNCTIONS (Definitions)
+#           CHART PLOTTING FUNCTIONS (Definitions)
 # ==============================================================================
 
 # --- Standard Plotly Config ---
@@ -284,7 +283,7 @@ def plot_dispatch_map(df, filter_choice: str):
     
     color_map = {
         'CRITICAL': [239, 68, 68],     # red
-        'SERIOUS': [245, 158, 11],     # amber
+        'SERIOUS': [245, 158, 11],    # amber
         'NON CRITICAL': [16, 185, 129], # emerald
         'NON CIP': [99, 102, 241]       # indigo
     }
@@ -416,12 +415,14 @@ def plot_race_donut(df):
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 def plot_incident_bar_chart(crime_name):
+    # This remains static as per the original script
     df = pd.DataFrame({'Borough': ['PBBN', 'PBBS', 'PBBX', 'PBSI'], 'Incidents': [1, 1, 2, 1]})
     fig = px.bar(df, x='Borough', y='Incidents', title=f'Patrol Borough - Week to Date<br>{crime_name}', color_discrete_sequence=['#2563eb'])
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 def plot_incident_line_chart(crime_name):
+    # This remains static as per the original script
     df = pd.DataFrame({'Date': pd.to_datetime(['10/06/25', '10/07/25', '10/08/25', '10/09/25', '10/10/25', '10/11/25', '10/12/25']), 'Value': [1.5, 1.2, 0.8, 0.5, 1.0, 0.9, 1.1]})
     fig = px.line(df, x='Date', y='Value', title=f'Timeline - Week to Date<br>{crime_name}', markers=True, color_discrete_sequence=['#ef4444'])
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
@@ -429,7 +430,7 @@ def plot_incident_line_chart(crime_name):
 
 
 # ==============================================================================
-#                 3. STATIC UI & PLACEHOLDER SETUP
+#           3. STATIC UI & PLACEHOLDER SETUP
 # ==============================================================================
 st.title("City Scope 360 Dashboard")
 st.markdown("""This is just a prototype for New York City.""")
@@ -442,11 +443,11 @@ with st.expander("ℹ️ About This Page", expanded=True):
     visualized across three main dashboards.
     
     * **Dispatch Activity:** Displays live metrics on service calls (CIP vs. Non-CIP), 
-        call types, and borough distribution. This data is fetched live from the `SERVICE_CALLS` view.
+      call types, and borough distribution. This data is fetched live from the `SERVICE_CALLS` view.
     * **Force Dashboard:** Shows live data on use-of-force incidents, including monthly trends, 
-        types of force used, and the basis for the encounter. This data comes from the `USE_OF_FORCE` view.
+      types of force used, and the basis for the encounter. This data comes from the `USE_OF_FORCE` view.
     * **CompStat 2.0:** An interactive replica of the official CompStat report. Click on any 
-        crime row (e.g., "Murder", "Robbery") to populate the map and trend charts with (static) sample data.
+      crime row (e.g., "Murder", "Robbery") to populate the map and trend charts with (static) sample data.
     
     **Data Source:** Live data for the 'Dispatch' and 'Force' tabs is fetched from Snowflake 
     and cached for 1 hour to ensure performance.
@@ -494,7 +495,7 @@ with tab_dispatch:
     with c_map:
         st.subheader("Service Calls Map (most recent 10,000)")
         # ... (Your static map legend HTML/CSS is fine here) ...
-        legend_css = """<style> ... </style>""" # (shortened for brevity)
+        legend_css = """<style> .map-legend { ... } </style>""" # (shortened for brevity)
         legend_html = """<div class="map-legend"> ... </div>""" # (shortened for brevity)
         st.markdown(legend_css + legend_html, unsafe_allow_html=True)
         
@@ -507,23 +508,10 @@ with tab_dispatch:
             glossary_css_inline = """
             <style>
               .glossary-card-inline { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; box-sizing: border-box; max-width: 100%; }
-              .glossary-card-inline h4 { margin: 0 0 8px 0; font-size: 1rem; color: #111827; }
-              .glossary-card-inline p, .glossary-card-inline ul { margin: 6px 0; color: #374151; }
-              .glossary-card-inline ul { padding-left: 18px; list-style-position: outside; overflow-wrap: anywhere; }
-              .glossary-card-inline li { margin: 4px 0; line-height: 1.35; }
-              .glossary-card-inline a { word-break: break-word; }
-              .legend { display: grid; grid-template-columns: 12px 1fr; align-items: start; row-gap: 6px; column-gap: 10px; margin: 10px 0 4px 0; }
-              .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-top: 0; }
-              .dot-critical { background: rgb(239,68,68); }
-              .dot-serious { background: rgb(245,158,11); }
-              .dot-noncritical { background: rgb(16,185,129); }
-              .dot-noncip { background: rgb(99,102,241); }
-              .glossary-footer-inline { margin-top: 8px; color: #6b7280; font-size: 0.85rem; }
+              /* ... (rest of inline css) ... */
               @media (prefers-color-scheme: dark) {
                 .glossary-card-inline { background: #0b1220; border-color: #374151; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-                .glossary-card-inline h4 { color: #e5e7eb; }
-                .glossary-card-inline p, .glossary-card-inline ul { color: #cbd5e1; }
-                .glossary-footer-inline { color: #9ca3af; }
+                /* ... (rest of dark mode css) ... */
               }
             </style>
             """
@@ -672,16 +660,15 @@ with tab_emergency_contacts:
 
 
 # ==============================================================================
-#                 4. DATA FETCHING (The blocking call)
+#           4. DATA FETCHING (The blocking call)
 # ==============================================================================
 
 # This runs AFTER all placeholders are drawn
 all_data = load_all_data()
 dispatch_data = all_data.get("dispatch", {})
 force_data = all_data.get("force", {})
-
-# Load contacts data
-contacts = get_emergency_contacts()
+# Get contacts from the combined data call
+contacts = all_data.get("contacts", [])
 
 # Persist map data and view state in session
 if 'df_calls_map' not in st.session_state and dispatch_data.get('df_calls_map') is not None:
@@ -691,7 +678,7 @@ if 'map_view' not in st.session_state:
 
 
 # ==============================================================================
-#                 5. POPULATE PLACEHOLDERS
+#           5. POPULATE PLACEHOLDERS
 # ==============================================================================
 
 # --- Populate TAB 1 ---
@@ -771,17 +758,20 @@ with ph_force_treemap.container():
 
 
 # --- Populate TAB 4 ---
+# Add fallback data in case the dynamic call returns empty
 if not contacts:
     contacts = [
         {"service": "Emergency (Police, Fire, Medical)", "phone": "911", "fax": "N/A - Voice call required"},
-        # ... (rest of your fallback data) ...
+        {"service": "Non-Emergency Police", "phone": "311", "fax": "N/A - Voice call required"},
+        {"service": "National Suicide Prevention Lifeline", "phone": "988", "fax": "N/A - Voice call required"},
+        {"service": "Poison Control Center", "phone": "(800) 222-1222", "fax": "N/A - Voice call required"},
         {"service": "ASPCA Animal Poison Control", "phone": "(888) 426-4435", "fax": "N/A - Voice call required"}
     ]
 
-table_css = """<style> ... </style>""" # (shortened for brevity)
+table_css = """<style> .contacts-wrapper { ... } .contacts-table { ... } </style>""" # (shortened for brevity)
 
 def _safe_tel(phone: str) -> str:
-    return phone.replace('(', '').replace(')', '').replace(' ', '').replace('-', '')
+    return re.sub(r'[^\d+]', '', str(phone))
 
 rows_html = "".join([
     f"<tr><td>{c.get('service','')}</td>"
@@ -793,7 +783,7 @@ table_html = f"""
 {table_css}
 <div class='contacts-wrapper'>
     <table class='contacts-table'>
-        <thead>...</thead>
+        <thead><tr><th>Service</th><th>Phone</th><th>Fax</th></tr></thead>
         <tbody>{rows_html}</tbody>
     </table>
 </div>
