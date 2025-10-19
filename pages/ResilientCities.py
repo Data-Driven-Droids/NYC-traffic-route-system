@@ -6,10 +6,25 @@ import altair as alt # Added for better charts
 from streamlit.components.v1 import html # Import for embedding HTML
 from utils import get_resilient_cities_data_by_view
 
-# --- START MOCK FUNCTIONS ---
-def get_resilient_cities_data_by_view_static(view_name):
-    if view_name == "EMERGENCY_RESPONSE":
-        data = {
+# --- Page Configuration ---
+st.set_page_config(page_title="Resilient Cities Dashboard", layout="wide")
+
+
+# ==============================================================================
+# 1. DATA LOADING DEFINITION
+# ==============================================================================
+@st.cache_data(ttl=3600) # Cache data for 1 hour
+def load_data():
+    """
+    Loads all data for the Resilient Cities dashboard.
+    - Emergency Response data is static/mocked.
+    - 311 Requests data is fetched from Snowflake via utils.
+    """
+    
+    # --- Load Emergency Response Data (Static) ---
+    # This logic was moved from the old mock function
+    try:
+        emergency_data = {
             'SECTION': ['EMS', 'EMS', 'EMS', 'FDNY', 'FDNY', 'NYPD', 'NYPD', 'NYPD', 'NYPD', 'NYPD (Non-CIP)'],
             'FINAL_INCIDENT_TYPE': ['Cardiac', 'Difficulty Breathing', 'Injury', 'Structural Fire', 'Vehicle Fire', 'Assault', 'Robbery', 'Burglary', 'Larceny', 'Noise Complaint'],
             'NUMBER_OF_INCIDENTS': [120, 95, 210, 30, 15, 80, 45, 60, 110, 350],
@@ -23,27 +38,23 @@ def get_resilient_cities_data_by_view_static(view_name):
             'AGENCY_ARRIVAL': ['8:30', '9:15', '7:45', '5:30', '6:15', '10:15', '9:45', '11:00', '9:20', '12:30'],
             'FIRST_ARRIVAL_MULTI_AGENCY': ['8:30', '9:15', '7:45', '5:30', '6:15', '10:15', '9:45', '11:00', '9:20', '12:30']
         }
-        return pd.DataFrame(data)
+        emergency_df = pd.DataFrame(emergency_data)
+    except Exception as e:
+        st.error(f"Error creating static Emergency Response data: {e}")
+        emergency_df = pd.DataFrame()
 
-    return pd.DataFrame()
-
-
-# --- Page Configuration ---
-st.set_page_config(page_title="Resilient Cities Dashboard", layout="wide")
-
-
-# ==============================================================================
-#                               1. DATA LOADING DEFINITION
-# ==============================================================================
-@st.cache_data(ttl=3600) # Cache data for 1 hour
-def load_data():
-    """Loads all data for the Resilient Cities dashboard from Snowflake."""
-    emergency_df = get_resilient_cities_data_by_view_static("EMERGENCY_RESPONSE")
-    requests_df = get_resilient_cities_data_by_view("311_REQUESTS") 
+    # --- Load 311 Requests Data (Live from Snowflake) ---
+    # This calls the real function from utils, as requested
+    try:
+        requests_df = get_resilient_cities_data_by_view("311_REQUESTS")
+    except Exception as e:
+        st.error(f"Error fetching 311 data from Snowflake: {e}")
+        requests_df = pd.DataFrame()
+    
     return emergency_df, requests_df
 
 # ==============================================================================
-#                               2. HELPER FUNCTIONS FOR DISPLAY
+# 2. HELPER FUNCTIONS FOR DISPLAY
 # ==============================================================================
 
 def time_str_to_seconds(time_str):
@@ -66,8 +77,8 @@ def format_seconds_to_mm_ss(seconds):
     if pd.isna(seconds):
         return "N/A"
     minutes = int(seconds // 60)
-    seconds = int(seconds % 60)
-    return f"{minutes}:{seconds:02d}"
+    seconds_rem = int(seconds % 60)
+    return f"{minutes}:{seconds_rem:02d}"
 
 def display_emergency_table(title, data, headers):
     """Helper function to render a formatted table section for Tab 1."""
@@ -85,27 +96,25 @@ def display_emergency_table(title, data, headers):
 
 
 # ==============================================================================
-#                               3. STATIC UI & PLACEHOLDER SETUP
+# 3. STATIC UI & PLACEHOLDER SETUP
 # ==============================================================================
 st.title("🏙️ NYC Resilient Cities Dashboard")
 
 # --- "About" section ---
 with st.expander("ℹ️ About This Dashboard", expanded=False):
     st.markdown("""
-    This dashboard provides a multi-faceted view of New York City's resilience and operational status, 
+    This dashboard provides a multi-faceted view of New York City's resilience and operational status,
     drawing live data from several city databases.
-    
     * **Emergency Response Metrics:** Tracks weekly response times for 911 calls, segmented by agency (EMS, FDNY, NYPD).
     * **Capital Projects:** Shows future development projects for the city, rendered from an embedded dashboard.
     * **311 Service Requests:** Analyzes non-emergency 311 service requests, filterable by borough and status.
-    
     """)
 st.markdown("---")
 
 # Create the three tabs
 tab1, tab2, tab3 = st.tabs([
-    "Emergency Response Metrics", 
-    "Capital Projects", 
+    "Emergency Response Metrics",
+    "Capital Projects",
     "311 Service Requests"
 ])
 
@@ -113,21 +122,21 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.header("Weekly Emergency Response Times")
     ph_tab1 = st.empty()
-    ph_tab1.info("Loading Emergency Response data from Snowflake...")
+    ph_tab1.info("Loading Emergency Response data...")
 
 # --- Content for TAB 2 (Embed) ---
 with tab2:
     st.header("Future Development Projects")
     st.write("This interactive dashboard shows future development projects.")
-
+    
     EMBED_CODE = """
-    <iframe title="Future Development Projects New York" 
-        width="100%" 
-        height="750" 
-        src="https://app.powerbigov.us/view?r=eyJrIjoiMTkwYWMyNGEtMDNiZC00OTY4LTk4YjEtYzI0MzhlOTA3MzllIiwidCI6IjM1YzgyODE2LTZjNTYtNDQzYi1iYWY2LTgzMTIxNjNjYWRjMSJ9" 
-        frameborder="0" 
-        allowFullScreen="true">
-</iframe>
+    <iframe title="Future Development Projects New York"
+    width="100%"
+    height="750"
+    src="https://app.powerbigov.us/view?r=eyJrIjoiMTkwYWMyNGEtMDNiZC00OTY4LTk4YjEtYzI0MzhlOTA3MzllIiwidCI6IjM1YzgyODE2LTZjNTYtNDQzYi1iYWY2LTgzMTIxNjNjYWRjMSJ9"
+    frameborder="0"
+    allowFullScreen="true">
+    </iframe>
     """
     html(EMBED_CODE, height=670, scrolling=True)
 
@@ -135,36 +144,35 @@ with tab2:
 # --- Placeholders for TAB 3 ---
 with tab3:
     ph_tab3 = st.empty()
+    ph_tab3.info("Loading 311 Service Requests data from Snowflake...")
 
 
 # ==============================================================================
-#                               4. DATA FETCHING & PROCESSING
+# 4. DATA FETCHING & PROCESSING
 # ==============================================================================
 
-# This call now only fetches data for tabs 1 and 3.
+# This single call now runs the combined data loading function
 df_emergency, df_311 = load_data()
 
 
 # ==============================================================================
-#                               5. POPULATE DYNAMIC TABS
+# 5. POPULATE DYNAMIC TABS
 # ==============================================================================
 
 # --- Populate TAB 1 ---
-ph_tab1.empty() 
-with ph_tab1.container(): 
+ph_tab1.empty()
+with ph_tab1.container():
     if df_emergency is not None and not df_emergency.empty:
         df_emergency.columns = [col.upper() for col in df_emergency.columns]
-        
         time_cols_to_convert = [
             "FIRST_PICKUP", "CALLTAKER_HANDOFF", "FDNY_PICKUP", "FDNY_JOB_CREATION",
             "EMS_PICKUP", "AGENCY_JOB_CREATION", "AGENCY_DISPATCH", "AGENCY_ARRIVAL",
             "FIRST_ARRIVAL_MULTI_AGENCY"
         ]
-        
         for col in time_cols_to_convert:
             if col in df_emergency.columns:
                 df_emergency[f'{col}_SEC'] = df_emergency[col].apply(time_str_to_seconds)
-        
+            
         if 'NUMBER_OF_INCIDENTS' in df_emergency.columns:
             df_emergency['NUMBER_OF_INCIDENTS'] = pd.to_numeric(
                 df_emergency['NUMBER_OF_INCIDENTS'], errors='coerce'
@@ -174,8 +182,8 @@ with ph_tab1.container():
             st.stop()
             
         table_headers = [
-            "Final Incident Type", "# of Incidents", "First Pickup", "Calltaker Handoff", 
-            "FDNY Pickup", "FDNY Job Creation", "EMS Pickup", "Agency Job Creation", 
+            "Final Incident Type", "# of Incidents", "First Pickup", "Calltaker Handoff",
+            "FDNY Pickup", "FDNY Job Creation", "EMS Pickup", "Agency Job Creation",
             "Agency Dispatch", "Agency Arrival", "First Arrival (Multi-Agency)"
         ]
         table_data_cols = [
@@ -185,11 +193,11 @@ with ph_tab1.container():
         ]
         
         sections = ['EMS', 'FDNY', 'NYPD', 'NYPD (Non-CIP)']
-        
         for section in sections:
             section_data = df_emergency[df_emergency['SECTION'] == section].copy()
             if not section_data.empty:
                 st.subheader(f"Performance Metrics: {section}")
+                
                 total_incidents = section_data['NUMBER_OF_INCIDENTS'].sum()
                 avg_arrival_time_sec = section_data['AGENCY_ARRIVAL_SEC'].mean()
                 avg_arrival_str = format_seconds_to_mm_ss(avg_arrival_time_sec)
@@ -225,31 +233,35 @@ with ph_tab1.container():
 
                 st.markdown("---")
     else:
-        st.error("Could not load Emergency Response data from Snowflake.")
+        st.error("Could not load Emergency Response data.")
 
 
 # --- Populate TAB 3 (MODIFIED) ---
+ph_tab3.empty()
 with ph_tab3.container():
     if df_311 is None or df_311.empty:
         st.error("Could not load 311 Service Requests data from Snowflake.")
     else:
         df_311.columns = [col.upper() for col in df_311.columns]
+        
         if 'AGENCY_NAME' not in df_311.columns or 'COMPLAINT_TYPE' not in df_311.columns:
             st.error("311 data is missing required columns: 'AGENCY_NAME' or 'COMPLAINT_TYPE'.")
         else:
             if 'CREATED_DATE' not in df_311.columns:
+                st.warning("311 data missing 'CREATED_DATE'. Using current time as fallback.")
                 df_311['CREATED_DATE'] = pd.to_datetime(pd.Timestamp.now())
+            else:
+                df_311['CREATED_DATE'] = pd.to_datetime(df_311['CREATED_DATE'])
+                
             if 'BOROUGH' not in df_311.columns:
                 df_311['BOROUGH'] = 'Unknown'
                 
             df_311['AGENCY_SERVICE'] = df_311['AGENCY_NAME'] + ' - ' + df_311['COMPLAINT_TYPE']
-            df_311['CREATED_DATE'] = pd.to_datetime(df_311['CREATED_DATE'])
+            
 
             st.header("Monitoring Tool: Neighborhood")
-            
             neighborhoods = ['All'] + sorted(df_311['BOROUGH'].unique())
             selected_neighborhood = st.selectbox("Neighborhood", neighborhoods)
-            
             st.subheader("Top Five Service Requests in Selected Neighborhood")
 
             # --- Dynamic Date Logic ---
@@ -268,7 +280,6 @@ with ph_tab3.container():
 
             current_counts = current_month_data['AGENCY_SERVICE'].value_counts().reset_index(name='Requests_Current')
             current_counts.columns = ['AGENCY_SERVICE', 'Requests_Current']
-            
             previous_counts = previous_month_data['AGENCY_SERVICE'].value_counts().reset_index(name='Requests_Previous')
             previous_counts.columns = ['AGENCY_SERVICE', 'Requests_Previous']
             
@@ -296,9 +307,9 @@ with ph_tab3.container():
                 # Determine color and text for % Change
                 if pd.isna(change_val):
                     if row['Requests_Previous'] == 0 and row['Requests_Current'] > 0:
-                         change_str = "<span style='color:red;'>New</span>"
+                        change_str = "<span style='color:red;'>New</span>"
                     else:
-                         change_str = "-" # Should not happen if previous is 0, but as a fallback
+                        change_str = "-" # Should not happen if previous is 0, but as a fallback
                 else:
                     color = 'red' if change_val > 0 else 'green'
                     change_str = f"<span style='color:{color}'>{change_val:+.1f}%</span>"
@@ -306,6 +317,7 @@ with ph_tab3.container():
                 r_cols[3].markdown(f"<div style='text-align: center;'>{change_str}</div>", unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
+            
             service_requests = ['All'] + sorted(df_311['AGENCY_SERVICE'].unique())
             selected_service_request = st.selectbox("Service Request", service_requests)
             
@@ -337,16 +349,15 @@ with ph_tab3.container():
             # --- Map Section ---
             st.subheader("Service Request Neighborhood Map")
             st.caption("Select a time period and filters to see requests on the map.")
-            
             import datetime
-            
             min_date = df_311['CREATED_DATE'].min().date()
             max_date = df_311['CREATED_DATE'].max().date()
 
             default_start = max(min_date, datetime.date(2025, 9, 1))
             default_end = min(max_date, datetime.date(2025, 9, 30))
+            
             if default_start > default_end:
-                 default_start = min_date
+                default_start = min_date
 
             date_range = st.date_input(
                 "Date Range",
@@ -359,18 +370,16 @@ with ph_tab3.container():
             if len(date_range) == 2:
                 start_date, end_date = date_range
                 start_datetime = pd.to_datetime(start_date)
-                end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) 
+                end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1)
 
                 map_df = df_311.copy()
-                
                 map_df = map_df[
-                    (map_df['CREATED_DATE'] >= start_datetime) & 
+                    (map_df['CREATED_DATE'] >= start_datetime) &
                     (map_df['CREATED_DATE'] < end_datetime)
                 ]
                 
                 if selected_neighborhood != 'All':
                     map_df = map_df[map_df['BOROUGH'] == selected_neighborhood]
-                
                 if selected_service_request != 'All':
                     map_df = map_df[map_df['AGENCY_SERVICE'] == selected_service_request]
 
@@ -378,20 +387,19 @@ with ph_tab3.container():
                 default_lon = -73.9855
 
                 if 'LATITUDE' not in map_df.columns or 'LONGITUDE' not in map_df.columns:
-                     st.error("Map cannot be displayed: Latitude/Longitude columns not found in 311 data.")
-                
+                    st.error("Map cannot be displayed: Latitude/Longitude columns not found in 311 data.")
                 elif map_df.empty:
                     st.info("No requests found for the selected filters. Showing default NYC location.")
                     map_df_display = pd.DataFrame([{'lat': default_lat, 'lon': default_lon}])
                     st.map(map_df_display)
-
+                
                 else:
                     map_df_display = map_df[['LATITUDE', 'LONGITUDE']].copy()
                     map_df_display.rename(columns={'LATITUDE': 'lat', 'LONGITUDE': 'lon'}, inplace=True)
-                    
                     map_df_display['lat'] = pd.to_numeric(map_df_display['lat'], errors='coerce')
                     map_df_display['lon'] = pd.to_numeric(map_df_display['lon'], errors='coerce')
 
+                    # Fill NaNs with default NYC coords *after* coercion
                     map_df_display['lat'].fillna(default_lat, inplace=True)
                     map_df_display['lon'].fillna(default_lon, inplace=True)
                     
