@@ -331,7 +331,7 @@ def main():
 
     # Sidebar Controls
     st.sidebar.markdown("### ⚙️ Dashboard Controls")
-    refresh_btn = st.sidebar.button("🔄 Refresh Traffic Data", use_container_width=True)
+    refresh_btn = st.sidebar.button("🔄 Refresh Traffic Data", width='stretch')
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 Filters")
@@ -605,11 +605,11 @@ def main():
                 
                 with col1:
                     severity_fig = create_severity_chart(congestion_data)
-                    st.plotly_chart(severity_fig, use_container_width=True)
+                    st.plotly_chart(severity_fig, width='stretch')
                 
                 with col2:
                     event_type_fig = create_event_type_chart(congestion_data)
-                    st.plotly_chart(event_type_fig, use_container_width=True)
+                    st.plotly_chart(event_type_fig, width='stretch')
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
@@ -618,11 +618,11 @@ def main():
                 
                 with col3:
                     severity_by_type_fig = create_severity_by_type_chart(congestion_data)
-                    st.plotly_chart(severity_by_type_fig, use_container_width=True)
+                    st.plotly_chart(severity_by_type_fig, width='stretch')
                 
                 with col4:
                     county_fig = create_county_chart(congestion_data)
-                    st.plotly_chart(county_fig, use_container_width=True)
+                    st.plotly_chart(county_fig, width='stretch')
                 
                 # Additional Insights
                 st.markdown("---")
@@ -727,7 +727,7 @@ def main():
             end = st.text_input("🔴 Destination", "Central Park, NYC")
         with col3:
             st.markdown("<br>", unsafe_allow_html=True)
-            route_btn = st.button("🚦 Get Route", use_container_width=True)
+            route_btn = st.button("🚦 Get Route", width='stretch')
         
         if route_btn:
             try:

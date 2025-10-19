@@ -12,7 +12,7 @@ if 'selected_crime' not in st.session_state:
     st.session_state.selected_crime = None
 
 # ==============================================================================
-#                       1. DATA LOADING & PROCESSING
+#                     1. DATA LOADING & PROCESSING
 # ==============================================================================
 
 @st.cache_data(ttl=3600) # Cache data for 1 hour
@@ -158,8 +158,22 @@ force_data = all_data.get("force", {})
 
 
 # ==============================================================================
-#                       CHART PLOTTING FUNCTIONS
+#                     CHART PLOTTING FUNCTIONS
 # ==============================================================================
+
+# --- Standard Plotly Config ---
+# This dictionary holds Plotly-specific configuration options.
+# The warning about "keyword arguments" refers to passing these options
+# directly to st.plotly_chart (e.g., st.plotly_chart(fig, displayModeBar=False)).
+# The correct way is to pass them inside this 'config' dictionary.
+# The 'width' argument is a Streamlit argument, not a Plotly config, so it stays separate.
+PLOTLY_CONFIG = {
+    'displayModeBar': True,  # Show the mode bar (zoom, pan, etc.)
+    'displaylogo': False,    # Hide the Plotly logo
+    'scrollZoom': True,      # Allow zooming with the mouse wheel
+    'width': 'stretch'
+}
+
 def plot_cip_vs_non_cip(df):
     if df is None or df.empty:
         return st.warning("CIP data not available.")
@@ -187,7 +201,7 @@ def plot_cip_vs_non_cip(df):
         margin=dict(t=60, b=10, l=10, r=10),
         height=360
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_cip_calls_by_type(df):
     if df is None or df.empty:
@@ -202,7 +216,7 @@ def plot_cip_calls_by_type(df):
         text=df_sorted['Calls'].map(lambda v: f"{int(v):,}"), textposition='outside', cliponaxis=False
     )
     fig.update_layout(height=fig_height, margin=dict(l=10, r=10, t=60, b=10), xaxis=dict(showgrid=True, gridcolor='#eef2f7'), yaxis=dict(title=None))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_calls_by_borough(df):
     if df is None or df.empty:
@@ -214,7 +228,7 @@ def plot_calls_by_borough(df):
     )
     fig.update_traces(textposition='inside', textinfo='percent+label')
     fig.update_layout(margin=dict(t=60, b=10, l=10, r=10), height=360)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_incidents_by_month(df):
     if df is None or df.empty:
@@ -222,7 +236,7 @@ def plot_incidents_by_month(df):
     fig = px.bar(df, x='Month', y='Incidents', title='Incidents by Month', color_discrete_sequence=['#2563eb'])
     fig.update_xaxes(categoryorder='array', categoryarray=df['Month'].tolist())
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_type_of_force(df):
     if df is None or df.empty:
@@ -236,7 +250,7 @@ def plot_type_of_force(df):
     fig.update_traces(text=df_sorted['Percentage'].map(lambda v: f"{v:.1f}%"), textposition='outside', cliponaxis=False)
     max_val = float(df_sorted['Percentage'].max()) if not df_sorted.empty else 100
     fig.update_layout(template='plotly_white', xaxis=dict(title='Percentage', ticksuffix='%', range=[0, max_val * 1.15]), yaxis_title=None, margin=dict(l=10, r=10, t=60, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_basis_for_encounter(df):
     if df is None or df.empty:
@@ -250,7 +264,7 @@ def plot_basis_for_encounter(df):
     fig.update_traces(text=df_sorted['Percentage'].map(lambda v: f"{v:.1f}%"), textposition='outside', cliponaxis=False)
     max_val = float(df_sorted['Percentage'].max()) if not df_sorted.empty else 100
     fig.update_layout(template='plotly_white', xaxis=dict(title='Percentage', ticksuffix='%', range=[0, max_val * 1.15]), yaxis_title=None, margin=dict(l=10, r=10, t=60, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_rank_treemap(df):
     if df is None or df.empty:
@@ -258,7 +272,7 @@ def plot_rank_treemap(df):
     fig = px.treemap(df, path=['Rank'], values='Count', title='Members of Service by Rank', color_discrete_sequence=px.colors.qualitative.Set3)
     fig.update_traces(textinfo='label+value')
     fig.update_layout(margin=dict(l=0, r=0, t=60, b=0), template='plotly_white')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_race_donut(df):
     if df is None or df.empty:
@@ -266,23 +280,23 @@ def plot_race_donut(df):
     fig = px.pie(df, names='Race', values='Percentage', hole=0.6, title='Incidents by Race', color_discrete_sequence=px.colors.qualitative.Set2)
     fig.update_traces(textposition='inside', textinfo='percent+label')
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_incident_bar_chart(crime_name):
     df = pd.DataFrame({'Borough': ['PBBN', 'PBBS', 'PBBX', 'PBSI'], 'Incidents': [1, 1, 2, 1]})
     fig = px.bar(df, x='Borough', y='Incidents', title=f'Patrol Borough - Week to Date<br>{crime_name}', color_discrete_sequence=['#2563eb'])
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 def plot_incident_line_chart(crime_name):
     df = pd.DataFrame({'Date': pd.to_datetime(['10/06/25', '10/07/25', '10/08/25', '10/09/25', '10/10/25', '10/11/25', '10/12/25']), 'Value': [1.5, 1.2, 0.8, 0.5, 1.0, 0.9, 1.1]})
     fig = px.line(df, x='Date', y='Value', title=f'Timeline - Week to Date<br>{crime_name}', markers=True, color_discrete_sequence=['#ef4444'])
     fig.update_layout(template='plotly_white', margin=dict(t=60, b=10, l=10, r=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config=PLOTLY_CONFIG) # <-- MODIFIED
 
 
 # ==============================================================================
-#                       STREAMLIT APPLICATION LAYOUT
+#                     STREAMLIT APPLICATION LAYOUT
 # ==============================================================================
 
 st.title("NYPD Dashboards")
@@ -393,7 +407,7 @@ with tab_compstat:
         prev_selected = st.session_state.selected_crime
         edited_df = st.data_editor(
             display_df,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config={
                 "Select": st.column_config.CheckboxColumn(required=False),

@@ -125,7 +125,7 @@ class RouteDisplay:
         # Display table with styling
         st.dataframe(
             df,
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
         
@@ -230,7 +230,7 @@ class SearchControls:
             "🔍 Find Best Routes",
             type="primary",
             disabled=not can_search,
-            use_container_width=True
+            width='stretch'
         )
         
         # Show validation messages

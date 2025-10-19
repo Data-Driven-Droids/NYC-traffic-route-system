@@ -323,7 +323,7 @@ if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"
         map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
     )
     
-    st.pydeck_chart(r, use_container_width=True)
+    st.pydeck_chart(r, width='stretch')
 
     with st.expander("Show Raw Bin Location Data"):
         # Display table with Area column after Name
@@ -336,7 +336,7 @@ if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"
         
         # Filter to only existing columns
         available_display_cols = [col for col in display_cols if col in bin_locations_df.columns]
-        st.dataframe(bin_locations_df[available_display_cols], use_container_width=True)
+        st.dataframe(bin_locations_df[available_display_cols], width='stretch')
 
     st.markdown("---")
 else:
@@ -418,7 +418,7 @@ if not recent_12.empty:
         )
     )
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
     st.markdown("---")
 
     # Highlights Section with Enhanced Styling
