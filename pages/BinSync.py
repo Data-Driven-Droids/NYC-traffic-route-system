@@ -1,15 +1,19 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import pydeck as pdk
 from datetime import datetime
-from utils import calculate_monthly_waste_metrics, get_bin_locations_data
+from utils import calculate_monthly_waste_metrics, get_bin_locations_data, get_news_headlines
 
 # ======================================================================
-# DATA LOADING FUNCTIONS
+# DATA LOADING FUNCTIONS (INDIVIDUAL & CACHED)
 # ======================================================================
 
 @st.cache_data
 def load_monthly_data():
+    """
+    Fetches and processes monthly waste metrics.
+    """
     df = calculate_monthly_waste_metrics()
     if df is not None and not df.empty:
         # Convert 'MONTH' safely from "YYYY / MM" → datetime
@@ -25,9 +29,43 @@ def load_monthly_data():
 
 @st.cache_data
 def load_bin_locations():
+    """
+    Fetches bin location data.
+    """
     df = get_bin_locations_data()
     return df
 
+
+@st.cache_data(ttl=600) # Cache news for 10 minutes
+def load_news_headlines():
+    """
+    Fetches and caches news headlines.
+    """
+    try:
+        news = get_news_headlines(query="New York City recycling and waste management", max_results=15)
+        return news
+    except Exception as e:
+        return None # Return None on failure
+
+# ======================================================================
+# MASTER DATA LOADING FUNCTION
+# ======================================================================
+
+@st.cache_data(ttl=600) # Main cache for the entire dashboard
+def load_all_data():
+    """
+    Calls all individual data functions and returns them in a single dict.
+    This is the only data function the main script will call.
+    """
+    monthly_df = load_monthly_data()
+    bin_locations_df = load_bin_locations()
+    news_headlines = load_news_headlines()
+    
+    return {
+        "monthly": monthly_df,
+        "bins": bin_locations_df,
+        "news": news_headlines
+    }
 
 # ======================================================================
 # PAGE CONFIG
@@ -120,15 +158,21 @@ with highlights_placeholder.container():
 
 
 # ======================================================================
-# LOAD DATA (THIS HAPPENS *AFTER* SKELETON IS DRAWN)
+# LOAD ALL DATA (THIS HAPPENS *AFTER* SKELETON IS DRAWN)
 # ======================================================================
-monthly_df = load_monthly_data()
-bin_locations_df = load_bin_locations()
+data = load_all_data()
 
+# --- Unpack data ---
+monthly_df = data.get("monthly")
+bin_locations_df = data.get("bins")
+news_headlines = data.get("news")
+
+# --- Process data ---
 if monthly_df is not None and not monthly_df.empty:
     latest = monthly_df.iloc[-1]
     recent_12 = monthly_df.tail(12)
 else:
+    # Create empty fallbacks
     latest = pd.Series({
         "MONTH": datetime.now(),
         "TOTAL_WASTE_TONS_MONTHLY": 0,
@@ -187,35 +231,28 @@ with metrics_placeholder.container():
 with news_placeholder.container():
     st.markdown('<h3 style="color:#FFFFFF;">♻️ Latest Recycling & Waste Management News</h3>', unsafe_allow_html=True)
 
-    # Fetch recycling/waste management related news
-    try:
-        from utils import get_news_headlines
-        # Get general news and filter for recycling/waste keywords
-        news_headlines = get_news_headlines(query="New York City recycling and waste management", max_results=15)
-        
+    # Process the 'news_headlines' variable
+    if news_headlines:
         if isinstance(news_headlines, str):
             headlines_list = [h.strip() for h in news_headlines.split("•") if h.strip()]
         else:
             headlines_list = news_headlines if news_headlines else []
-        
-        # Use the list directly (query is already specific)
         filtered_headlines = headlines_list
-        
-        # If no recycling news found, use general environmental news or default messages
-        if not filtered_headlines:
-            filtered_headlines = [
-                "NYC continues to improve waste diversion rates across all boroughs",
-                "New recycling initiatives launched to increase sustainability",
-                "Smart bin technology being deployed citywide",
-                "Composting programs expand to more neighborhoods",
-                "City targets 90% waste diversion rate by 2030"
-            ]
-        
-        headlines_html = "".join([f"<div class='headline-item'>♻️ {h}</div>" for h in filtered_headlines[:10]])
-        
-    except Exception as e:
-        headlines_html = "<div class='headline-item'>♻️ NYC continues to improve waste management and recycling efforts</div>"
-
+    else:
+        filtered_headlines = []
+    
+    # If no recycling news found, use general environmental news or default messages
+    if not filtered_headlines:
+        filtered_headlines = [
+            "NYC continues to improve waste diversion rates across all boroughs",
+            "New recycling initiatives launched to increase sustainability",
+            "Smart bin technology being deployed citywide",
+            "Composting programs expand to more neighborhoods",
+            "City targets 90% waste diversion rate by 2030"
+        ]
+    
+    headlines_html = "".join([f"<div class='headline-item'>♻️ {h}</div>" for h in filtered_headlines[:10]])
+    
     # Custom CSS for news ticker
     news_ticker_css = """
     <style>
@@ -229,7 +266,6 @@ with news_placeholder.container():
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         border: 2px solid rgba(46, 204, 113, 0.3);
     }
-
     .recycling-news-scroll {
         display: flex;
         flex-direction: column;
@@ -238,7 +274,6 @@ with news_placeholder.container():
         width: 100%;
         animation: scrollUpRecycling 25s linear infinite;
     }
-
     .recycling-news-container .headline-item {
         font-size: 1.05em;
         font-weight: 500;
@@ -247,7 +282,6 @@ with news_placeholder.container():
         padding: 8px 0;
         line-height: 1.5;
     }
-
     .recycling-live-indicator {
         position: absolute;
         top: 12px;
@@ -264,7 +298,6 @@ with news_placeholder.container():
         border-radius: 12px;
         border: 1px solid #2ecc71;
     }
-
     .recycling-live-dot {
         width: 8px;
         height: 8px;
@@ -272,7 +305,6 @@ with news_placeholder.container():
         border-radius: 50%;
         animation: pulseGreen 2s infinite;
     }
-
     @keyframes pulseGreen {
         0%, 100% {
             opacity: 1;
@@ -283,14 +315,12 @@ with news_placeholder.container():
             transform: scale(1.1);
         }
     }
-
     @keyframes scrollUpRecycling {
         0%   { top: 100%; }
         100% { top: -100%; }
     }
     </style>
     """
-
     st.markdown(news_ticker_css, unsafe_allow_html=True)
 
     # Render the news ticker
@@ -310,9 +340,6 @@ with news_placeholder.container():
 with map_placeholder.container():
     if bin_locations_df is not None and not bin_locations_df.empty and {"lat", "lon"}.issubset(bin_locations_df.columns):
         st.markdown('<h3 style="color:#FFFFFF;">🗺️ Real-Time Bin Locations</h3>', unsafe_allow_html=True)
-
-        # Create pydeck map with tooltips using open-street-map (no API key needed)
-        import pydeck as pdk
         
         # Define the layer with tooltips
         layer = pdk.Layer(
@@ -357,13 +384,12 @@ with map_placeholder.container():
             layers=[layer],
             initial_view_state=view_state,
             tooltip=tooltip,
-            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+            map_style="httpsf://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
         )
         
         st.pydeck_chart(r, use_container_width=True)
 
         with st.expander("Show Raw Bin Location Data"):
-            # Display table with Area column after Name
             display_cols = ["Name"]
             if "Area" in bin_locations_df.columns:
                 display_cols.append("Area")
@@ -371,10 +397,8 @@ with map_placeholder.container():
                 display_cols.append("Type")
             display_cols.extend(["lat", "lon"])
             
-            # Filter to only existing columns
             available_display_cols = [col for col in display_cols if col in bin_locations_df.columns]
             st.dataframe(bin_locations_df[available_display_cols], use_container_width=True)
-
     else:
         st.warning("⚠️ Could not load or display bin location data. Check data source or Snowflake connection.")
 
@@ -408,7 +432,7 @@ with chart_placeholder.container():
                     axis=alt.Axis(
                         labelColor="#A0A4AE",
                         format="%b %Y",  # Format as "Jan 2024"
-                        labelAngle=-45,  # Rotate labels for better readability
+                        labelAngle=-45,  # Rotate labels
                         labelFontSize=11,
                         titleColor="#FFFFFF",
                         titleFontSize=13,
