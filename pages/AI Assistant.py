@@ -261,7 +261,11 @@ if prompt := st.chat_input("💬 Ask me anything about NYC - traffic, weather, s
 
         Handle Greetings: You can respond to simple greetings (like "Hello" or "How are you?"), but always end your response by steering the conversation back to NYC. (e.g., "Hello! It's a great day in the city. What can I help you with in NYC today?")
 
-        Use History for Context: Pay close attention to the chat history. If a user asks a follow-up question (like "How do I get there?" or "How much does that cost?"), assume they are referring to the last NYC location or topic you discussed."""))
+        Use History for Context: Pay close attention to the chat history. If a user asks a follow-up question (like "How do I get there?" or "How much does that cost?"), assume they are referring to the last NYC location or topic you discussed.
 
+        DO NOT GENERATE CITATIONS in ANSWER
+        """))
+
+        
     # 3. Add the complete assistant response to the session state
     st.session_state.messages.append({"role": "assistant", "content": full_response})
