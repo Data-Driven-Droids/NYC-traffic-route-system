@@ -769,7 +769,7 @@ async def stream_gemini_response(
     active_tools = tools
     if active_tools is None:
         # Default to Google Search tool for RAG/grounding on live models
-        active_tools = [{"google_search": {}}]
+        active_tools = [{"google_search": {}, "googleMaps": {}}]
     if tools is None:
         config["tools"] = active_tools
     if system_instruction:
